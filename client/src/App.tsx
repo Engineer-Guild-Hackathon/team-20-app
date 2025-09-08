@@ -8,6 +8,9 @@ import {
   Toolbar,
   Paper
 } from '@mui/material';
+import PdfViewer from './components/PdfViewer';
+import AiAssistant from './components/AiAssistant';
+import Workspace from './components/Workspace';
 
 function App() {
   return (
@@ -34,40 +37,13 @@ function App() {
       <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
           <Box sx={{ flex: 1 }}>
-            <Paper 
-              sx={{ 
-                height: '100%', 
-                p: 2,
-                border: '1px solid #e0e0e0',
-                borderRadius: 2
-              }}
-            >
-              {/* セクション1 - 空 */}
-            </Paper>
+            <PdfViewer />
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Paper 
-              sx={{ 
-                height: '100%', 
-                p: 2,
-                border: '1px solid #e0e0e0',
-                borderRadius: 2
-              }}
-            >
-              {/* セクション2 - 空 */}
-            </Paper>
+            <AiAssistant />
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Paper 
-              sx={{ 
-                height: '100%', 
-                p: 2,
-                border: '1px solid #e0e0e0',
-                borderRadius: 2
-              }}
-            >
-              {/* セクション3 - 空 */}
-            </Paper>
+            <Workspace />
           </Box>
         </Box>
       </Container>
