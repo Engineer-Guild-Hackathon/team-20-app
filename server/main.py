@@ -6,7 +6,8 @@ from pydantic import BaseModel
 import uvicorn
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -46,10 +47,10 @@ else:
     logging.warning(".env file not found or failed to load.")
 
 # Gemini APIキーを設定
-api_key = "YOUR_API"#os.getenv("GEMINI_API_KEY")
-if not api_key:
+API_KEY = "AIzaSyB97noIENa-jgjxD36F8BuXkPO-_JIV4RI"
+#os.getenv("GEMINI_API_KEY")
+if not API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
-genai.configure(api_key=api_key)
 
 class ChatRequest(BaseModel):
     message: str
@@ -67,12 +68,15 @@ async def health_check():
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """チャットエンドポイント"""
+
+    client = genai.Client(api_key=API_KEY)
     try:
         # 新しいモデル名に変更
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(request.message)
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-001', contents=request.message
+        )
         
-        logging.info(f"Generated response: {response}")
+        logging.info(f"Generated response: {response.text}")
         
         if not response or not response.text:
             return {"reply": "応答なし！"}
