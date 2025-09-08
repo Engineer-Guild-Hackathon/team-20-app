@@ -1,44 +1,27 @@
 {
   "name": "team-20-app",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "フルスタック Web アプリケーション（React + Python FastAPI）",
   "private": true,
-  "dependencies": {
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^6.8.0",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^13.5.0",
-    "@types/jest": "^27.5.2",
-    "@types/node": "^16.18.126",
-    "@types/react": "^19.1.12",
-    "@types/react-dom": "^19.1.9",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-scripts": "5.0.1",
-    "typescript": "^4.9.5",
-    "web-vitals": "^2.1.4"
-  },
+  "workspaces": [
+    "client"
+  ],
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "install:all": "npm install && cd client && npm install && cd ../server && pip install -r requirements.txt",
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd client && npm start",
+    "dev:server": "cd server && python main.py",
+    "build": "cd client && npm run build",
+    "test": "cd client && npm test",
+    "start": "npm run dev"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
   }
 }
