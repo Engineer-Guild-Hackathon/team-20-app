@@ -1,6 +1,5 @@
 import React from 'react';
 import { 
-  Button, 
   Typography, 
   Container, 
   Box, 
@@ -11,6 +10,7 @@ import {
 import PdfViewer from './components/PdfViewer';
 import AiAssistant from './components/AiAssistant';
 import Workspace from './components/Workspace';
+import FileUploadButton from './components/FileUploadButton';
 
 function App() {
   return (
@@ -22,13 +22,7 @@ function App() {
             <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
               CogniStudy
             </Typography>
-            <Button 
-              variant="contained" 
-              color="secondary"
-              sx={{ backgroundColor: '#f50057' }}
-            >
-              Upload PDF
-            </Button>
+            <FileUploadButton />
           </Toolbar>
         </Container>
       </AppBar>
