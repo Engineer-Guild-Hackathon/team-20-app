@@ -46,7 +46,7 @@ else:
     logging.warning(".env file not found or failed to load.")
 
 # Gemini APIキーを設定
-api_key = "AIzaSyAbrP9sf85icSXHF1cpd8swQkvaNQYNmHA"#os.getenv("GEMINI_API_KEY")
+api_key = "YOUR_API"#os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 genai.configure(api_key=api_key)
@@ -67,15 +67,21 @@ async def health_check():
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """チャットエンドポイント"""
-    #try:
-    model = genai.GenerativeModel('gemini-pro')
-    response = model.generate_content(request.message)
-    print( response )
-    logging.info( response )
-    if response == "": return {"reply":"応答なし！"}
-    return {"reply": response.text}
-    #except Exception as e:
-    #    raise HTTPException(status_code=500, detail=str(e))
+    try:
+        # 新しいモデル名に変更
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(request.message)
+        
+        logging.info(f"Generated response: {response}")
+        
+        if not response or not response.text:
+            return {"reply": "応答なし！"}
+            
+        return {"reply": response.text}
+    except Exception as e:
+        logging.error(f"Error in chat endpoint: {str(e)}")
+        # エラーハンドリングを有効化
+        raise HTTPException(status_code=500, detail=f"AI応答エラー: {str(e)}")
 
 @app.get("/api/hello/{name}")
 async def say_hello(name: str):
