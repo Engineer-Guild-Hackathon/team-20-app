@@ -1,0 +1,27 @@
+{
+  "name": "team-20-app",
+  "version": "1.0.0",
+  "description": "フルスタック Web アプリケーション（React + Python FastAPI）",
+  "private": true,
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "install:all": "npm install && cd client && npm install && cd ../server && pip install -r requirements.txt",
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd client && npm start",
+    "dev:server": "cd server && python main.py",
+    "build": "cd client && npm run build",
+    "test": "cd client && npm test",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  }
+}
