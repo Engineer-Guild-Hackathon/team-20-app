@@ -2,6 +2,9 @@
 
 ## 2025-09-09
 
+- 参考になりそうな情報
+https://stackblitz.com/edit/react-ts-mtxxop
+
 - **Pyodide `indexURL` の修正:**
   - `client/src/components/Pyodide.tsx` で使用するPyodideの `indexURL` を、プロジェクトで使用しているPyodideのバージョン (`v0.24.0`) に合わせて `https://cdn.jsdelivr.net/pyodide/v0.24.0/full/` に修正しました。これにより、Pyodideが正しいファイルをダウンロードできるようになり、初期化が成功する可能性が高まります。
 - **TypeScriptエラーの解消（StackBlitzのコード統合に伴うもの）（継続）:**
