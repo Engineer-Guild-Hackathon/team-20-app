@@ -25,10 +25,18 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>React App</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+    <py-config></py-config>
+    <script src="https://pyscript.net/releases/2024.1.1/core.js"></script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <script type="py">
+      # This script is here to ensure the PyScript runtime initializes
+      # and fires the 'py:all-done' event.
+      print("PyScript Initializer...")
+    </script>
     <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.
