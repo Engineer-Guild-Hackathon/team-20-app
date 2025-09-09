@@ -47,8 +47,7 @@ else:
     logging.warning(".env file not found or failed to load.")
 
 # Gemini APIキーを設定
-API_KEY = "YOUR_API_KEY"
-#os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 
