@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { Paper, Typography, TextField, Button, Box } from '@mui/material';
+import { Paper, Typography, Button, Box } from '@mui/material';
+import Editor from 'react-simple-code-editor';
+import { highlight, languages } from 'prismjs';
+import 'prismjs/components/prism-python';
+import 'prismjs/themes/prism.css'; // You can choose a different theme
 
 const Workspace: React.FC = () => {
   const [pythonCode, setPythonCode] = useState<string>('print("Hello from PyScript!")');
@@ -60,18 +64,29 @@ ${pythonCode}
   };
 
   return (
-    <Paper sx={{ height: '100%', p: 2, display: 'flex', flexDirection: 'column' }}>
+    <Paper sx={{
+        height: '100%',
+        p: 2,
+        border: '1px solid #e0e0e0',
+        borderRadius: 2,
+        display: 'flex',
+        flexDirection: 'column'
+      }}
+      >
       <Typography variant="h6" gutterBottom>Python Workspace</Typography>
-      <TextField
-        label="Python Code"
-        multiline
-        rows={10}
-        variant="outlined"
-        fullWidth
-        value={pythonCode}
-        onChange={(e) => setPythonCode(e.target.value)}
-        sx={{ mb: 2 }}
-      />
+      <Box sx={{ mb: 2, border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden' }}>
+        <Editor
+          value={pythonCode}
+          onValueChange={setPythonCode}
+          highlight={code => highlight(code, languages.python, 'python')}
+          padding={10}
+          style={{
+            fontFamily: '"Fira code", "Fira Mono", monospace',
+            fontSize: 14,
+            minHeight: '200px',
+          }}
+        />
+      </Box>
       <Button
         variant="contained"
         color="primary"

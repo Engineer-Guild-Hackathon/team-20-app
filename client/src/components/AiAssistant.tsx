@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import TryIcon from '@mui/icons-material/Try';
 import {
   Paper,
   Typography,
   TextField,
   Button,
   Box,
+  Divider,
   CircularProgress,
   List,
   ListItem,
@@ -63,13 +65,20 @@ const AiAssistant: React.FC = () => {
       sx={{
         height: '100%',
         p: 2,
+        border: '1px solid #e0e0e0',
+        borderRadius: 2,
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
-        AI Assistant
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <TryIcon color="secondary" />
+        <Typography variant="h6" component="h2">
+          AI Assistant
+        </Typography>
+      </Box>
+      <Divider sx={{ mb: 2 }} />
+
       <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
         <List>
           {messages.map((msg, index) => (
