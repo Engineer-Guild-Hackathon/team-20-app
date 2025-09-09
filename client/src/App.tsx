@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Typography, 
   Container, 
@@ -13,6 +13,13 @@ import Workspace from './components/Workspace';
 import FileUploadButton from './components/FileUploadButton';
 
 function App() {
+  const [pdfSummary, setPdfSummary] = useState<string>('');
+  const [pdfFilename, setPdfFilename] = useState<string>('');
+
+  const handleSummaryGenerated = (summary: string, filename: string) => {
+    setPdfSummary(summary);
+    setPdfFilename(filename);
+  };
   return (
     <Box sx={{ flexGrow: 1 }}>
       {/* 上部のヘッダーセクション */}
@@ -22,7 +29,7 @@ function App() {
             <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
               CogniStudy
             </Typography>
-            <FileUploadButton />
+            <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
           </Toolbar>
         </Container>
       </AppBar>
@@ -31,7 +38,7 @@ function App() {
       <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
           <Box sx={{ flex: 1 }}>
-            <PdfViewer />
+            <PdfViewer summary={pdfSummary} filename={pdfFilename} />
           </Box>
           <Box sx={{ flex: 1 }}>
             <AiAssistant />
