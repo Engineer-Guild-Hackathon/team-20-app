@@ -1,130 +1,100 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Paper, Typography, Button, Box } from '@mui/material';
-import Editor from '@monaco-editor/react';
-
-// PyScriptの型定義 (グローバルスコープに存在するため)
-declare global {
-  interface Window {
-    PyScript: any;
-  }
-}
+import React, { useState } from 'react';
+import { Paper, Typography, TextField, Button, Box } from '@mui/material';
 
 const Workspace: React.FC = () => {
-  const [code, setCode] = useState<string>('print("Hello, PyScript!")');
-  const outputRef = useRef<HTMLDivElement>(null);
-  const [pyscriptReady, setPyscriptReady] = useState(false);
+  const [pythonCode, setPythonCode] = useState<string>('print("Hello from PyScript!")');
+  const [output, setOutput] = useState<string>('');
 
-  useEffect(() => {
-    const handlePyScriptReady = () => {
-      console.log('PyScript is fully loaded and all initial scripts are done.');
-      setPyscriptReady(true);
-      document.removeEventListener('py:done', handlePyScriptReady);
-    };
-
-    document.addEventListener('py:done', handlePyScriptReady);
-
-    return () => {
-      document.removeEventListener('py:done', handlePyScriptReady);
-    };
-  }, []);
-
-  const runCode = async () => {
-    if (!pyscriptReady) {
-      if (outputRef.current) {
-        outputRef.current.innerText = 'PyScript is not ready yet. Please wait a moment and try again.';
-      }
-      return;
+  const handleRunCode = async () => {
+    setOutput('Executing...');
+    // Clear previous PyScript elements
+    const oldPyScript = document.getElementById('pyscript-runner');
+    if (oldPyScript) {
+      oldPyScript.remove();
     }
 
-    if (outputRef.current) {
-      outputRef.current.innerHTML = ''; // Clear previous output
-    }
+    // Create a new div to hold the PyScript output
+    const outputDiv = document.createElement('div');
+    outputDiv.id = 'pyscript-output-target';
+    outputDiv.style.display = 'none'; // Hide this div
 
-    const pythonCode = `
-import js
+    // Append the output target div to the body or a specific container
+    document.body.appendChild(outputDiv); // Or a more specific container if available
+
+    // Create a new <py-script> element
+    const pyScriptElement = document.createElement('py-script');
+    pyScriptElement.id = 'pyscript-runner';
+    // Redirect stdout to the outputDiv
+    pyScriptElement.innerHTML = `
 import sys
-import io
+from js import document
 
-# 出力先のDOM要素を取得
-output_div = js.document.getElementById('pyscript-output-area')
+class ConsoleOutput:
+    def write(self, s):
+        output_target = document.getElementById('pyscript-output-target')
+        if output_target: 
+            output_target.innerHTML += s
+    def flush(self):
+        pass
 
-# 標準出力をキャプチャ
-old_stdout = sys.stdout
-sys.stdout = captured_output = io.StringIO()
+sys.stdout = ConsoleOutput()
+sys.stderr = ConsoleOutput()
 
-try:
-    exec('''${code.replace(/'/g, "\'").replace(/\n/g, '\\n')}''')
-finally:
-    sys.stdout = old_stdout
-
-# キャプチャした出力をDOMに書き込む
-output_content = captured_output.getvalue()
-output_div.innerText = output_content
+${pythonCode}
 `;
 
-    const scriptRunner = document.createElement('script');
-    scriptRunner.type = 'py';
-    scriptRunner.id = 'dynamic-pyscript-runner';
-    scriptRunner.textContent = pythonCode;
+    // Append the <py-script> element to the body to execute
+    document.body.appendChild(pyScriptElement);
 
-    const existingRunner = document.getElementById('dynamic-pyscript-runner');
-    if (existingRunner) {
-      existingRunner.remove();
-    }
+    // Wait for a short period for PyScript to execute and update the DOM
+    // This is a simple approach; a more robust solution would involve PyScript's event listeners
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    document.body.appendChild(scriptRunner);
+    // Read the output from the hidden div
+    const finalOutput = outputDiv.innerHTML;
+    setOutput(finalOutput);
 
-    try {
-      if ((scriptRunner as any).evaluate) {
-        await (scriptRunner as any).evaluate();
-      } else {
-        console.warn("evaluate() method not found on the script element.");
-        if (outputRef.current) {
-          outputRef.current.innerText = "Error: PyScript evaluate() method not found.";
-        }
-      }
-    } catch (e: any) {
-      console.error("Error evaluating Python code:", e);
-      if (outputRef.current) {
-        outputRef.current.innerText = `Error: ${e.message || e}`;
-      }
-    }
+    // Clean up the dynamically created elements
+    pyScriptElement.remove();
+    outputDiv.remove();
   };
 
   return (
     <Paper sx={{ height: '100%', p: 2, display: 'flex', flexDirection: 'column' }}>
-      <Typography variant="h6" gutterBottom>
-        Python Workspace (PyScript)
-      </Typography>
-      <Box sx={{ flex: 1, border: '1px solid #ccc', borderRadius: '4px', mb: 1, minHeight: '200px' }}>
-        <Editor
-          height="100%"
-          defaultLanguage="python"
-          defaultValue={'print("Hello from PyScript!")'}
-          onChange={(value) => setCode(value || '')}
-          options={{ minimap: { enabled: false } }}
-        />
-      </Box>
-      <Button variant="contained" onClick={runCode} sx={{ mb: 1 }} disabled={!pyscriptReady}>
-        {pyscriptReady ? 'Run Code' : 'Loading PyScript...'}
+      <Typography variant="h6" gutterBottom>Python Workspace</Typography>
+      <TextField
+        label="Python Code"
+        multiline
+        rows={10}
+        variant="outlined"
+        fullWidth
+        value={pythonCode}
+        onChange={(e) => setPythonCode(e.target.value)}
+        sx={{ mb: 2 }}
+      />
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={handleRunCode}
+        sx={{ mb: 2 }}
+      >
+        Run Python Code
       </Button>
-      <Typography variant="subtitle1" gutterBottom>
-        Output:
-      </Typography>
-      <Paper 
-        id="pyscript-output-area" // PyScriptの出力先ID
-        ref={outputRef} 
-        sx={{ 
+      <Typography variant="h6" gutterBottom>Output</Typography>
+      <Box
+        sx={{
           flexGrow: 1,
-          p: 2, 
-          backgroundColor: '#f5f5f5', 
-          overflowY: 'auto',
+          p: 2,
+          border: '1px solid #ccc',
+          borderRadius: '4px',
+          backgroundColor: '#f5f5f5',
+          overflow: 'auto',
           fontFamily: 'monospace',
-          whiteSpace: 'pre-wrap'
+          whiteSpace: 'pre-wrap',
         }}
       >
-        {/* PyScriptの出力はここに表示される */}
-      </Paper>
+        {output || 'No output yet.'}
+      </Box>
     </Paper>
   );
 };
