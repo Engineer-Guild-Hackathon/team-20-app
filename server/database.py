@@ -16,11 +16,37 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
+class Team(Base):
+    __tablename__ = "teams"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), primary_key=True)
+    role = Column(String, nullable=False, default="member") # e.g., "admin", "member"
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    summary_id = Column(Integer, ForeignKey("summary_histories.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class SummaryHistory(Base):
     __tablename__ = "summary_histories"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True) # New: Link to team
     filename = Column(String, nullable=False)
     summary = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

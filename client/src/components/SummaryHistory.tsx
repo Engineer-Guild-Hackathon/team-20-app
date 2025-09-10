@@ -7,7 +7,8 @@ import {
   ListItemButton,
   ListItemText,
   Divider,
-  Box
+  Box,
+  Chip
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 
@@ -17,6 +18,8 @@ interface HistoryItem {
   filename: string;
   summary: string;
   created_at?: string;
+  team_id?: number; // 追加
+  username?: string; // 追加
 }
 
 interface SummaryHistoryProps {
@@ -54,11 +57,27 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
               <ListItem key={item.id || index} disablePadding>
                 <ListItemButton onClick={() => onHistoryClick(item)}>
                   <ListItemText
-                    primary={item.filename}
-                    primaryTypographyProps={{
-                      noWrap: true,
-                      style: { fontWeight: 500 }
-                    }}
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          fontWeight={500}
+                          noWrap
+                          sx={{ flexGrow: 1 }}
+                        >
+                          {item.filename}
+                        </Typography>
+                        {item.team_id && (
+                          <Chip
+                            label={`チーム共有: ${item.username || '不明'}`}
+                            size="small"
+                            color="info"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Box>
+                    }
                     secondary={new Date(item.created_at || Date.now()).toLocaleString('ja-JP')}
                   />
                 </ListItemButton>

@@ -163,9 +163,23 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
 
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment # Team, TeamMember, Commentを追加
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+from typing import Optional
+
+
 class SaveSummaryRequest(BaseModel):
     filename: str
     summary: str
+    team_id: Optional[int] = None # 追加
+
+class TeamCreateRequest(BaseModel):
+    name: str
+
+class CommentCreateRequest(BaseModel):
+    summary_id: int
+    content: str
 
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -200,6 +214,170 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/api/teams")
+async def create_team(request: TeamCreateRequest, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """チーム作成エンドポイント"""
+    existing_team = db.query(Team).filter(Team.name == request.name).first()
+    if existing_team:
+        raise HTTPException(status_code=400, detail="チーム名は既に存在します")
+
+    new_team = Team(name=request.name, created_by_user_id=current_user.id)
+    db.add(new_team)
+    db.commit()
+    db.refresh(new_team)
+
+    # チーム作成者を管理者として追加
+    new_team_member = TeamMember(user_id=current_user.id, team_id=new_team.id, role="admin")
+    db.add(new_team_member)
+    db.commit()
+
+    return {"message": "チームが正常に作成されました", "team_id": new_team.id, "team_name": new_team.name}
+
+@app.post("/api/teams/{team_id}/members")
+async def add_team_member(team_id: int, member_username: str = Form(...), current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """チームにメンバーを追加するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # 現在のユーザーがチームの管理者であるか確認
+    current_user_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not current_user_membership or current_user_membership.role != "admin":
+        raise HTTPException(status_code=403, detail="チームメンバーを追加する権限がありません")
+
+    # 追加するユーザーが存在するか確認
+    user_to_add = db.query(User).filter(User.username == member_username).first()
+    if not user_to_add:
+        raise HTTPException(status_code=404, detail="追加するユーザーが見つかりません")
+
+    # ユーザーが既にチームのメンバーであるか確認
+    existing_member = db.query(TeamMember).filter(
+        TeamMember.user_id == user_to_add.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if existing_member:
+        raise HTTPException(status_code=400, detail="ユーザーは既にこのチームのメンバーです")
+
+    # メンバーを追加
+    new_member = TeamMember(user_id=user_to_add.id, team_id=team_id, role="member")
+    db.add(new_member)
+    db.commit()
+
+    return {"message": f"{member_username}をチームに追加しました", "team_id": team_id, "user_id": user_to_add.id}
+
+@app.delete("/api/teams/{team_id}/members/{user_id}")
+async def remove_team_member(team_id: int, user_id: int, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """チームからメンバーを削除するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # 現在のユーザーがチームの管理者であるか確認
+    current_user_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not current_user_membership or current_user_membership.role != "admin":
+        raise HTTPException(status_code=403, detail="チームメンバーを削除する権限がありません")
+
+    # 削除対象のメンバーが存在するか確認
+    member_to_remove = db.query(TeamMember).filter(
+        TeamMember.user_id == user_id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not member_to_remove:
+        raise HTTPException(status_code=404, detail="指定されたユーザーはこのチームのメンバーではありません")
+
+    # 削除対象が管理者である場合、最後の管理者でないことを確認
+    if member_to_remove.role == "admin":
+        admin_count = db.query(TeamMember).filter(
+            TeamMember.team_id == team_id,
+            TeamMember.role == "admin"
+        ).count()
+        if admin_count == 1 and member_to_remove.user_id == current_user.id:
+            raise HTTPException(status_code=400, detail="最後の管理者を削除することはできません")
+
+    db.delete(member_to_remove)
+    db.commit()
+
+    return {"message": "チームメンバーを削除しました", "team_id": team_id, "user_id": user_id}
+
+@app.put("/api/teams/{team_id}/members/{user_id}/role")
+async def update_team_member_role(team_id: int, user_id: int, new_role: str = Form(...), current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """チームメンバーの役割を更新するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # 現在のユーザーがチームの管理者であるか確認
+    current_user_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not current_user_membership or current_user_membership.role != "admin":
+        raise HTTPException(status_code=403, detail="チームメンバーの役割を変更する権限がありません")
+
+    # 変更対象のメンバーが存在するか確認
+    member_to_update = db.query(TeamMember).filter(
+        TeamMember.user_id == user_id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not member_to_update:
+        raise HTTPException(status_code=404, detail="指定されたユーザーはこのチームのメンバーではありません")
+
+    # 役割の有効性をチェック
+    if new_role not in ["admin", "member"]:
+        raise HTTPException(status_code=400, detail="無効な役割です。'admin'または'member'を指定してください。")
+
+    # 最後の管理者を降格させないチェック
+    if member_to_update.role == "admin" and new_role == "member":
+        admin_count = db.query(TeamMember).filter(
+            TeamMember.team_id == team_id,
+            TeamMember.role == "admin"
+        ).count()
+        if admin_count == 1:
+            raise HTTPException(status_code=400, detail="最後の管理者を降格させることはできません")
+
+    member_to_update.role = new_role
+    db.commit()
+
+    return {"message": f"{member_to_update.user_id}の役割を{new_role}に更新しました", "team_id": team_id, "user_id": user_id, "new_role": new_role}
+
+@app.get("/api/teams/{team_id}/members")
+async def get_team_members(team_id: int, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """チームのメンバーリストを取得するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # 現在のユーザーがチームのメンバーであるか確認
+    current_user_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not current_user_membership:
+        raise HTTPException(status_code=403, detail="このチームのメンバーではありません")
+
+    # チームメンバーとそのユーザー情報を取得
+    team_members = db.query(TeamMember, User).join(User).filter(
+        TeamMember.team_id == team_id
+    ).all()
+
+    # 必要な情報だけを抽出して返す
+    members_data = [
+        {"user_id": member.user_id, "username": user.username, "role": member.role}
+        for member, user in team_members
+    ]
+
+    return members_data
 
 @app.get("/")
 async def root():
@@ -314,9 +492,144 @@ async def say_hello(name: str):
 
 @app.get("/api/summaries")
 async def get_summaries(current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
-    """認証されたユーザーの要約履歴を取得する"""
-    summaries = db.query(SummaryHistory).filter(SummaryHistory.user_id == current_user.id).order_by(SummaryHistory.created_at.desc()).all()
-    return summaries
+    """認証されたユーザーの要約履歴と、所属チームの共有要約を取得する"""
+    try:
+        # ユーザー自身の要約を取得
+        user_summaries_query = db.query(SummaryHistory, User.username).join(User, SummaryHistory.user_id == User.id).filter(
+            SummaryHistory.user_id == current_user.id
+        ).order_by(SummaryHistory.created_at.desc())
+        
+        user_summaries_data = []
+        for summary, username in user_summaries_query.all():
+            user_summaries_data.append({
+                "id": summary.id,
+                "filename": summary.filename,
+                "summary": summary.summary,
+                "created_at": summary.created_at,
+                "team_id": summary.team_id,
+                "username": username # 自分の要約の作成者名
+            })
+
+        # ユーザーが所属するチームのIDを取得
+        user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
+
+        # 所属チームに共有された要約を取得
+        shared_summaries_data = []
+        if user_team_ids:
+            shared_summaries_query = db.query(SummaryHistory, User.username).join(User, SummaryHistory.user_id == User.id).filter(
+                SummaryHistory.team_id.in_(user_team_ids),
+                SummaryHistory.user_id != current_user.id # 自分の要約はuser_summariesに含まれるため除外
+            ).order_by(SummaryHistory.created_at.desc())
+            
+            for summary, username in shared_summaries_query.all():
+                shared_summaries_data.append({
+                    "id": summary.id,
+                    "filename": summary.filename,
+                    "summary": summary.summary,
+                    "created_at": summary.created_at,
+                    "team_id": summary.team_id,
+                    "username": username # 共有要約の作成者名
+                })
+
+        # 両方のリストを結合して返す
+        all_summaries = user_summaries_data + shared_summaries_data
+
+        # 重複を排除し、作成日時でソート（必要であれば）
+        # ここでは単純に結合しているため、重複排除とソートはフロントエンドで行うか、
+        # より複雑なクエリを構築する必要があります。
+        # 例: set()を使って重複排除し、リストに変換後ソート
+        # unique_summaries = list({s.id: s for s in all_summaries}.values())
+        # unique_summaries.sort(key=lambda x: x.created_at, reverse=True)
+
+        return all_summaries
+    except Exception as e:
+        logging.error(f"Error fetching summaries for user {current_user.username}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"要約の取得中にエラーが発生しました: {str(e)}")
+
+@app.post("/api/comments")
+async def add_comment(request: CommentCreateRequest, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """要約にコメントを追加するエンドポイント"""
+    # 要約が存在するか確認
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="要約が見つかりません")
+
+    # ユーザーが要約にアクセスできるか確認（自身の要約、または所属チームの要約）
+    can_access = False
+    if summary.user_id == current_user.id:
+        can_access = True
+    elif summary.team_id:
+        team_membership = db.query(TeamMember).filter(
+            TeamMember.user_id == current_user.id,
+            TeamMember.team_id == summary.team_id
+        ).first()
+        if team_membership:
+            can_access = True
+
+    if not can_access:
+        raise HTTPException(status_code=403, detail="この要約にコメントする権限がありません")
+
+    new_comment = Comment(
+        summary_id=request.summary_id,
+        user_id=current_user.id,
+        content=request.content
+    )
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+
+    return {"message": "コメントが追加されました", "comment_id": new_comment.id}
+
+@app.get("/api/summaries/{summary_id}/comments")
+async def get_comments_for_summary(summary_id: int, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """要約のコメントを取得するエンドポイント"""
+    # 要約が存在するか確認
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="要約が見つかりません")
+
+    # ユーザーが要約にアクセスできるか確認（自身の要約、または所属チームの要約）
+    can_access = False
+    if summary.user_id == current_user.id:
+        can_access = True
+    elif summary.team_id:
+        team_membership = db.query(TeamMember).filter(
+            TeamMember.user_id == current_user.id,
+            TeamMember.team_id == summary.team_id
+        ).first()
+        if team_membership:
+            can_access = True
+
+    if not can_access:
+        raise HTTPException(status_code=403, detail="この要約のコメントを閲覧する権限がありません")
+
+    comments = db.query(Comment, User).join(User).filter(
+        Comment.summary_id == summary_id
+    ).order_by(Comment.created_at.asc()).all()
+
+    comments_data = [
+        {"id": comment.id, "user_id": comment.user_id, "username": user.username, "content": comment.content, "created_at": comment.created_at}
+        for comment, user in comments
+    ]
+
+    return comments_data
+
+@app.get("/api/users/me/teams")
+async def get_my_teams(current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """現在のユーザーが所属するチームのリストを取得するエンドポイント"""
+    my_memberships = db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()
+    
+    teams_data = []
+    for membership in my_memberships:
+        team = db.query(Team).filter(Team.id == membership.team_id).first()
+        if team:
+            teams_data.append({
+                "id": team.id,
+                "name": team.name,
+                "role": membership.role,
+                "created_by_user_id": team.created_by_user_id
+            })
+    return teams_data
 
 @app.post("/api/save-summary")
 async def save_summary(
@@ -326,10 +639,20 @@ async def save_summary(
 ):
     """要約をデータベースに保存するエンドポイント"""
     try:
+        # team_idが指定されている場合、ユーザーがそのチームのメンバーであることを確認
+        if request.team_id:
+            team_membership = db.query(TeamMember).filter(
+                TeamMember.user_id == current_user.id,
+                TeamMember.team_id == request.team_id
+            ).first()
+            if not team_membership:
+                raise HTTPException(status_code=403, detail="指定されたチームに要約を保存する権限がありません")
+
         new_history = SummaryHistory(
             user_id=current_user.id,
             filename=request.filename,
-            summary=request.summary
+            summary=request.summary,
+            team_id=request.team_id # team_idを追加
         )
         db.add(new_history)
         db.commit()

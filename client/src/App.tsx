@@ -20,6 +20,7 @@ import FileUploadButton from './components/FileUploadButton';
 import LoginModal from './components/LoginModal';
 import RegisterModal from './components/RegisterModal';
 import MyPage from './components/MyPage';
+import TeamManagement from './components/TeamManagement'; // 追加
 
 // 履歴項目の型定義
 interface HistoryItem {
@@ -27,12 +28,15 @@ interface HistoryItem {
   filename: string;
   summary: string;
   created_at?: string; // DBからの履歴にはcreated_atがある
+  team_id?: number; // 追加
+  username?: string; // 追加
 }
 
 function App() {
   const location = useLocation();
-  const [pdfSummary, setPdfSummary] = useState<string>('');
+    const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
+  const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined); // 追加
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]); // 履歴用のstate
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
@@ -128,16 +132,18 @@ function App() {
   const handleSummaryGenerated = (summary: string, filename: string) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
+    setPdfSummaryId(undefined); // 新しい要約なのでIDはなし
   };
 
   const handleHistoryClick = (item: HistoryItem) => {
     setPdfSummary(item.summary);
     setPdfFilename(item.filename);
+    setPdfSummaryId(item.id); // 履歴からIDを設定
     navigate('/'); // メインページに遷移
   };
 
   // 後から保存する関数
-  const handleSaveSummary = async (summary: string, filename: string) => {
+  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null) => {
     if (isLoggedIn) {
       // ログインしている場合：API経由でDBに保存
       const token = localStorage.getItem('access_token');
@@ -153,21 +159,24 @@ function App() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
           },
-          body: JSON.stringify({ filename, summary }),
+          body: JSON.stringify({ filename, summary, team_id: teamId }),
         });
 
         if (response.ok) {
+          const data = await response.json();
           showSnackbar('要約を保存しました！', 'success');
           // 保存成功後、履歴を再取得して最新の状態にする
           // これはuseEffectがisLoggedInを監視しているので、isLoggedInを一時的にfalseにしてtrueに戻すか、
           // 直接fetchHistoriesを呼び出すか、あるいは楽観的更新を行う
           // ここではシンプルに楽観的更新を行う
           const newHistoryItem: HistoryItem = {
+            id: data.id, // 保存されたIDを設定
             filename,
             summary,
             created_at: new Date().toISOString(),
           };
           setSummaryHistories(prev => [newHistoryItem, ...prev]);
+          setPdfSummaryId(data.id); // 保存された要約のIDを設定
 
         } else {
           const errorData = await response.json();
@@ -226,6 +235,7 @@ function App() {
                     {isLoggedIn ? (
                       [
                         <MenuItem key="mypage" component={Link} to="/mypage" onClick={handleCloseMenu}>マイページ</MenuItem>,
+                        <MenuItem key="team-management" component={Link} to="/teams" onClick={handleCloseMenu}>チーム管理</MenuItem>,
                         <MenuItem key="logout" onClick={handleLogout}>ログアウト</MenuItem>
                       ]
                     ) : (
@@ -251,7 +261,7 @@ function App() {
                 <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
                   <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                     <Box sx={{ flex: 1 }}>
-                      <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} />
+                      <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} />
                     </Box>
                     <Box sx={{ flex: 1 }}>
                       <AiAssistant pdfSummaryContent={pdfSummary} />
@@ -263,6 +273,7 @@ function App() {
                 </Container>
               } />
               <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} />} />
+              <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
             </Routes>
           </Box>
           <LoginModal
