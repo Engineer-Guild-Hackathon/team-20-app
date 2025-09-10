@@ -128,14 +128,6 @@ function App() {
   const handleSummaryGenerated = (summary: string, filename: string) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
-
-    const newHistoryItem: HistoryItem = {
-      filename,
-      summary,
-      created_at: new Date().toISOString(), // ローカルでの作成日時
-    };
-
-    
   };
 
   const handleHistoryClick = (item: HistoryItem) => {

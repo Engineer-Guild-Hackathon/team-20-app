@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import TryIcon from '@mui/icons-material/Try';
+import React, { useState, useRef, useEffect } from 'react';
+// import TryIcon from '@mui/icons-material/Try'; // Removed as per user request
 import {
   Paper,
   Typography,
@@ -10,9 +10,9 @@ import {
   CircularProgress,
   List,
   ListItem,
-  ListItemText,
-  Avatar,
+  // ListItemText, // ListItemText is no longer needed
 } from '@mui/material';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
   sender: 'user' | 'ai';
@@ -23,6 +23,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -60,6 +61,13 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
     }
   };
 
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   return (
     <Paper
       sx={{
@@ -72,18 +80,17 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <TryIcon color="secondary" />
+        {/* <TryIcon color="secondary" /> // Removed as per user request */}
         <Typography variant="h6" component="h2">
           AI Assistant
         </Typography>
       </Box>
       <Divider sx={{ mb: 2 }} />
 
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}> {/* Add ref here */}
         <List>
           {messages.map((msg, index) => (
             <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
-              {msg.sender === 'ai' && <Avatar sx={{ mr: 1 }}>AI</Avatar>}
               <Paper
                 elevation={2}
                 sx={{
@@ -93,9 +100,8 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
                   maxWidth: '80%',
                 }}
               >
-                <ListItemText primary={msg.text} />
+                <ReactMarkdown>{msg.text}</ReactMarkdown>
               </Paper>
-              {msg.sender === 'user' && <Avatar sx={{ ml: 1 }}>U</Avatar>}
             </ListItem>
           ))}
           {loading && (
