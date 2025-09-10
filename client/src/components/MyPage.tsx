@@ -25,7 +25,7 @@ const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick }) => { // on
       <Typography variant="h6" component="h2" sx={{ mt: 4, mb: 2 }}>
         要約履歴
       </Typography>
-      <Box sx={{ height: 'calc(100vh - 250px)' }}>
+      <Box sx={{ height: 'calc(100vh - 280px)' }}>
         <SummaryHistory histories={histories} onHistoryClick={onHistoryClick} /> {/* onHistoryClickをそのまま渡す */}
       </Box>
     </Container>

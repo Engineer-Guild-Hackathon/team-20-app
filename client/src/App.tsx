@@ -249,7 +249,7 @@ function App() {
             <Routes>
               <Route path="/" element={
                 <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
-                  <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
+                  <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                     <Box sx={{ flex: 1 }}>
                       <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} />
                     </Box>

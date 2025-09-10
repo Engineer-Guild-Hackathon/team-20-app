@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-// import TryIcon from '@mui/icons-material/Try'; // Removed as per user request
+import TryIcon from '@mui/icons-material/Try'
 import {
   Paper,
   Typography,
@@ -25,10 +25,11 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (messageToSend?: string) => {
+    const message = messageToSend || input;
+    if (!message.trim()) return;
 
-    const userMessage: Message = { sender: 'user', text: input };
+    const userMessage: Message = { sender: 'user', text: message };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
@@ -39,7 +40,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: input, pdf_summary: pdfSummaryContent }),
+        body: JSON.stringify({ message: message, pdf_summary: pdfSummaryContent }),
       });
 
       if (!response.ok) {
@@ -80,7 +81,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        {/* <TryIcon color="secondary" /> // Removed as per user request */}
+        <TryIcon color="secondary" />
         <Typography variant="h6" component="h2">
           AI Assistant
         </Typography>
@@ -100,7 +101,12 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
                   maxWidth: '80%',
                 }}
               >
-                <ReactMarkdown>{msg.text}</ReactMarkdown>
+                <ReactMarkdown
+                  components={{
+                    p: ({ children }) => <p style={{ margin: 0 }}>{children}</p>,
+                }}>
+                  {msg.text}
+                </ReactMarkdown>
               </Paper>
             </ListItem>
           ))}
@@ -112,13 +118,19 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
         </List>
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
-        <Button variant="outlined" onClick={() => setInput('コードを生成してください:')}>
+        <Button variant="outlined" onClick={() => handleSend(
+          'コードを生成してください:'
+          )}>
           コード生成
         </Button>
-        <Button variant="outlined" onClick={() => setInput('用語を解説してください:')}>
+        <Button variant="outlined" onClick={() => handleSend(
+          '用語を解説してください:'
+          )}>
           用語解説
         </Button>
-        <Button variant="outlined" onClick={() => setInput('検索してください:')}>
+        <Button variant="outlined" onClick={() => handleSend(
+          '検索してください:'
+          )}>
           検索
         </Button>
       </Box>
@@ -135,7 +147,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
         <Button
           variant="contained"
           color="primary"
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={loading}
           sx={{ ml: 1 }}
         >
