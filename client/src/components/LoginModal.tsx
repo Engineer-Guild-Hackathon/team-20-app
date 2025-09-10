@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
-  Button
+  Button,
+  Typography
 } from '@mui/material';
 
 interface LoginModalProps {
@@ -16,12 +17,37 @@ interface LoginModalProps {
 const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = () => {
-    console.log('Username:', username);
-    console.log('Password:', password);
-    // Here you would typically call an authentication API
-    onClose();
+  useEffect(() => {
+    if (open) {
+      setErrorMessage(''); // Clear error when modal opens
+    }
+  }, [open]);
+
+  const handleLogin = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (response.ok) {
+        console.log('ログイン成功！');
+        setErrorMessage(''); // Clear any previous error
+        onClose(); // ログイン成功時にモーダルを閉じる
+      } else {
+        const errorData = await response.json();
+        console.error('ログイン失敗:', errorData.detail);
+        setErrorMessage(`ログイン失敗: ${errorData.detail}`); // Set error message
+      }
+    } catch (error) {
+      console.error('ネットワークエラー:', error);
+      setErrorMessage('ネットワークエラーが発生しました。'); // Set error message
+    }
   };
 
   return (
@@ -36,7 +62,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
           fullWidth
           variant="standard"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => {
+            setUsername(e.target.value);
+            setErrorMessage(''); // Clear error on input change
+          }}
         />
         <TextField
           margin="dense"
@@ -45,8 +74,16 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
           fullWidth
           variant="standard"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setErrorMessage(''); // Clear error on input change
+          }}
         />
+        {errorMessage && (
+          <Typography color="error" variant="body2" sx={{ mt: 2 }}>
+            {errorMessage}
+          </Typography>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>キャンセル</Button>

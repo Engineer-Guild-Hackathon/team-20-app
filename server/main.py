@@ -56,6 +56,18 @@ if not API_KEY:
 class ChatRequest(BaseModel):
     message: str
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+async def login(request: LoginRequest):
+    """ユーザーログインエンドポイント"""
+    if request.username == "user" and request.password == "password":
+        return {"message": "ログイン成功！"}
+    else:
+        raise HTTPException(status_code=401, detail="無効な認証情報です")
+
 @app.get("/")
 async def root():
     """ルートエンドポイント"""
