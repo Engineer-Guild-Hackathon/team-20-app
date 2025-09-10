@@ -30,6 +30,7 @@ interface HistoryItem {
   created_at?: string; // DBからの履歴にはcreated_atがある
   team_id?: number; // 追加
   username?: string; // 追加
+  team_name?: string; // 追加
 }
 
 function App() {

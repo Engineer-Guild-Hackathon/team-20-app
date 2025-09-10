@@ -20,6 +20,7 @@ interface HistoryItem {
   created_at?: string;
   team_id?: number; // 追加
   username?: string; // 追加
+  team_name?: string; // 追加
 }
 
 interface SummaryHistoryProps {
@@ -70,7 +71,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                         </Typography>
                         {item.team_id && (
                           <Chip
-                            label={`チーム共有: ${item.username || '不明'}`}
+                            label={`チーム共有: ${item.team_name || '不明'} (${item.username || '不明'})`}
                             size="small"
                             color="info"
                             sx={{ ml: 1 }}

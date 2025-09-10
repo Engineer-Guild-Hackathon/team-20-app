@@ -182,15 +182,15 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, onS
           {summary && ( // 要約がある場合のみボタンを表示
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
               {isLoggedIn && myTeams.length > 0 && (
-                <FormControl variant="outlined" size="small" sx={{ minWidth: 120, mr: 1 }}>
+                <FormControl variant="outlined" size="small" sx={{ minWidth: 140, mr: 1 }}>
                   <InputLabel id="team-select-label">チームに保存</InputLabel>
                   <Select
                     labelId="team-select-label"
                     value={selectedTeamId}
-                    onChange={(e) => setSelectedTeamId(e.target.value as number)}
+                    onChange={(e) => setSelectedTeamId(e.target.value as number | '')}
                     label="チームに保存"
                   >
-                    <MenuItem value=""><em>個人用</em></MenuItem>
+                    <MenuItem value="個人用">個人用</MenuItem>
                     {myTeams.map((team) => (
                       <MenuItem key={team.id} value={team.id}>
                         {team.name}

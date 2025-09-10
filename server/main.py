@@ -495,40 +495,48 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
     """認証されたユーザーの要約履歴と、所属チームの共有要約を取得する"""
     try:
         # ユーザー自身の要約を取得
-        user_summaries_query = db.query(SummaryHistory, User.username).join(User, SummaryHistory.user_id == User.id).filter(
+        user_summaries_query = db.query(SummaryHistory, User.username, Team.name).outerjoin(Team, SummaryHistory.team_id == Team.id).join(User, SummaryHistory.user_id == User.id).filter(
             SummaryHistory.user_id == current_user.id
         ).order_by(SummaryHistory.created_at.desc())
         
         user_summaries_data = []
-        for summary, username in user_summaries_query.all():
+        for summary, username, team_name in user_summaries_query.all():
             user_summaries_data.append({
                 "id": summary.id,
                 "filename": summary.filename,
                 "summary": summary.summary,
                 "created_at": summary.created_at,
                 "team_id": summary.team_id,
-                "username": username # 自分の要約の作成者名
+                "username": username, # 自分の要約の作成者名
+                "team_name": team_name # チーム名を追加
             })
 
         # ユーザーが所属するチームのIDを取得
         user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
 
+        logging.info(f"User {current_user.username} is a member of teams: {user_team_ids}")
+
         # 所属チームに共有された要約を取得
         shared_summaries_data = []
         if user_team_ids:
-            shared_summaries_query = db.query(SummaryHistory, User.username).join(User, SummaryHistory.user_id == User.id).filter(
+            shared_summaries_query = db.query(SummaryHistory, User.username, Team.name).join(User, SummaryHistory.user_id == User.id).join(Team, SummaryHistory.team_id == Team.id).filter(
                 SummaryHistory.team_id.in_(user_team_ids),
                 SummaryHistory.user_id != current_user.id # 自分の要約はuser_summariesに含まれるため除外
             ).order_by(SummaryHistory.created_at.desc())
             
-            for summary, username in shared_summaries_query.all():
+            shared_summaries_results = shared_summaries_query.all()
+            logging.info(f"Found {len(shared_summaries_results)} shared summaries for user {current_user.username}")
+
+            for summary, username, team_name in shared_summaries_results:
+                logging.info(f"Adding shared summary: filename={summary.filename}, username={username}, team_name={team_name}")
                 shared_summaries_data.append({
                     "id": summary.id,
                     "filename": summary.filename,
                     "summary": summary.summary,
                     "created_at": summary.created_at,
                     "team_id": summary.team_id,
-                    "username": username # 共有要約の作成者名
+                    "username": username, # 共有要約の作成者名
+                    "team_name": team_name # チーム名を追加
                 })
 
         # 両方のリストを結合して返す
@@ -538,10 +546,10 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         # ここでは単純に結合しているため、重複排除とソートはフロントエンドで行うか、
         # より複雑なクエリを構築する必要があります。
         # 例: set()を使って重複排除し、リストに変換後ソート
-        # unique_summaries = list({s.id: s for s in all_summaries}.values())
-        # unique_summaries.sort(key=lambda x: x.created_at, reverse=True)
+        unique_summaries = list({s["id"]: s for s in all_summaries}.values())
+        unique_summaries.sort(key=lambda x: x["created_at"], reverse=True)
 
-        return all_summaries
+        return unique_summaries
     except Exception as e:
         logging.error(f"Error fetching summaries for user {current_user.username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"要約の取得中にエラーが発生しました: {str(e)}")
