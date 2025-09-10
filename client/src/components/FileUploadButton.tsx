@@ -11,6 +11,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>('');
   const [showError, setShowError] = useState(false);
+  
 
   const handleUpload = () => {
     fileInputRef.current?.click();
@@ -40,9 +41,17 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      
+
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
       const response = await fetch('http://localhost:8000/api/upload-pdf', {
         method: 'POST',
+        headers: headers,
         body: formData,
       });
 
@@ -78,6 +87,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
         accept=".pdf"
         style={{ display: 'none' }}
       />
+      
       
       <Button 
         variant="contained" 

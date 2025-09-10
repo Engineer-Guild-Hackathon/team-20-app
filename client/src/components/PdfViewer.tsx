@@ -1,14 +1,15 @@
 
 import React from 'react';
-import { Paper, Typography, Box, Divider, Chip } from '@mui/material';
-import { PictureAsPdf, AutoAwesome } from '@mui/icons-material';
+import { Paper, Typography, Box, Divider, Chip, Button } from '@mui/material';
+import { PictureAsPdf, AutoAwesome, Save as SaveIcon } from '@mui/icons-material';
 
 interface PdfViewerProps {
   summary?: string;
   filename?: string;
+  onSave: (summary: string, filename: string) => void; // 追加
 }
 
-const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename }) => {
+const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, onSave }) => {
   return (
     <Paper 
       sx={{ 
@@ -60,6 +61,18 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename }) => {
           >
             {summary}
           </Typography>
+          {summary && ( // 要約がある場合のみボタンを表示
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => onSave(summary, filename || '')}
+                startIcon={<SaveIcon />}
+              >
+                この要約を保存
+              </Button>
+            </Box>
+          )}
         </Box>
       ) : (
         <Box 

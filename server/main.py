@@ -1,6 +1,6 @@
 import logging
 import time
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -10,11 +10,11 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 import base64
-import tempfile
 from sqlalchemy.orm import Session
-from .database import Base, engine, SessionLocal, User
+from .database import Base, engine, SessionLocal, User, SummaryHistory
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
+from typing import Optional
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -87,6 +87,9 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+# --- 認証関連の依存関係 ---
+
+# トークンを検証し、ユーザー名を返す（旧来の保護されたルート用、主にサンプル）
 def verify_access_token(token: str, credentials_exception):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -96,6 +99,55 @@ def verify_access_token(token: str, credentials_exception):
         return username
     except JWTError:
         raise credentials_exception
+
+# 任意認証：ヘッダーからトークンを取得し、ユーザーオブジェクトを返す
+async def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> Optional[User]:
+    if authorization is None:
+        return None
+    
+    token_prefix = "Bearer "
+    if not authorization.startswith(token_prefix):
+        return None # スキームが不正
+        
+    token = authorization.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+    except JWTError:
+        return None
+
+    user = db.query(User).filter(User.username == username).first()
+    return user
+
+# 必須認証：トークンからユーザーオブジェクトを取得する
+def get_required_user(authorization: str = Header(...), db: Session = Depends(get_db)) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="無効な認証情報です",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    token_prefix = "Bearer "
+    if not authorization.startswith(token_prefix):
+        raise credentials_exception
+        
+    token = authorization.split(" ")[1]
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 
 
@@ -109,6 +161,10 @@ class LoginRequest(BaseModel):
 class RegisterRequest(BaseModel):
     username: str
     password: str
+
+class SaveSummaryRequest(BaseModel):
+    filename: str
+    summary: str
 
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -182,41 +238,32 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"AI応答エラー: {str(e)}")
 
 @app.post("/api/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...)):
-    """PDF アップロードと要約生成エンドポイント"""
+async def upload_pdf(
+    file: UploadFile = File(...), 
+    save_history: bool = Form(True), # 追加
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """PDF アップロードと要約生成エンドポイント（任意認証）"""
     try:
-        # ファイル形式の検証
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="PDFファイルのみアップロード可能です")
         
-        # ファイルサイズの検証 (10MB制限)
         if file.size > 10 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="ファイルサイズが大きすぎます (10MB以下にしてください)")
         
-        # ファイル内容を読み取り
         file_content = await file.read()
-        
-        # Base64エンコード
         base64_content = base64.b64encode(file_content).decode('utf-8')
         
-        # Gemini APIクライアントを作成
         client = genai.Client(api_key=API_KEY)
         
-        # PDFをGeminiに送信して要約を生成
         response = client.models.generate_content(
             model='gemini-2.0-flash-001',
             contents=[
                 {
                     'parts': [
-                        {
-                            'text': 'このPDFファイルの内容を日本語で要約してください。要点を箇条書きで整理し、わかりやすく説明してください。'
-                        },
-                        {
-                            'inline_data': {
-                                'mime_type': 'application/pdf',
-                                'data': base64_content
-                            }
-                        }
+                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点を箇条書きで整理し、わかりやすく説明してください。'},
+                        {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
                     ]
                 }
             ]
@@ -224,7 +271,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         
         logging.info(f"PDF summary generated for file: {file.filename}")
         
-        # レスポンス構造を確認してテキストを取得
         if hasattr(response, 'text') and response.text:
             summary = response.text
         elif hasattr(response, 'candidates') and response.candidates:
@@ -232,6 +278,17 @@ async def upload_pdf(file: UploadFile = File(...)):
         else:
             summary = "要約の生成に失敗しました"
         
+        # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
+        if current_user and save_history: # 条件追加
+            new_history = SummaryHistory(
+                user_id=current_user.id,
+                filename=file.filename,
+                summary=summary
+            )
+            db.add(new_history)
+            db.commit()
+            logging.info(f"Summary history saved for user: {current_user.username}")
+
         return {
             "filename": file.filename,
             "summary": summary,
@@ -248,6 +305,34 @@ async def upload_pdf(file: UploadFile = File(...)):
 async def say_hello(name: str):
     """挨拶エンドポイント"""
     return {"message": f"こんにちは、{name}さん！"}
+
+@app.get("/api/summaries")
+async def get_summaries(current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """認証されたユーザーの要約履歴を取得する"""
+    summaries = db.query(SummaryHistory).filter(SummaryHistory.user_id == current_user.id).order_by(SummaryHistory.created_at.desc()).all()
+    return summaries
+
+@app.post("/api/save-summary")
+async def save_summary(
+    request: SaveSummaryRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """要約をデータベースに保存するエンドポイント"""
+    try:
+        new_history = SummaryHistory(
+            user_id=current_user.id,
+            filename=request.filename,
+            summary=request.summary
+        )
+        db.add(new_history)
+        db.commit()
+        db.refresh(new_history)
+        logging.info(f"Summary saved via /api/save-summary for user: {current_user.username}")
+        return {"message": "要約が正常に保存されました", "id": new_history.id}
+    except Exception as e:
+        logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"要約の保存中にエラーが発生しました: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
