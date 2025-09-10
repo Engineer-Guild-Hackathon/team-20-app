@@ -5,8 +5,10 @@ import {
   Box, 
   AppBar, 
   Toolbar,
-  Paper
+  Paper,
+  IconButton
 } from '@mui/material';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import PdfViewer from './components/PdfViewer';
 import AiAssistant from './components/AiAssistant';
 import Workspace from './components/Workspace';
@@ -30,6 +32,9 @@ function App() {
               CogniStudy
             </Typography>
             <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
+            <IconButton color="inherit" aria-label="account" onClick={() => console.log('Account icon clicked')}>
+              <AccountCircleIcon fontSize="large" />
+            </IconButton>
           </Toolbar>
         </Container>
       </AppBar>
