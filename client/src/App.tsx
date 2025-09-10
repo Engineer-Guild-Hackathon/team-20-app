@@ -135,17 +135,7 @@ function App() {
       created_at: new Date().toISOString(), // ローカルでの作成日時
     };
 
-    // ログイン状態に応じて履歴を更新
-    if (isLoggedIn) {
-        // ログイン中は、新しい履歴を既存の履歴の先頭に追加して即時反映
-        setSummaryHistories(prev => [newHistoryItem, ...prev]);
-        // この後、バックグラウンドでサーバーから最新のリストを再取得するのが理想的だが、今回は楽観的UI更新に留める
-    } else {
-        // 非ログイン中は、ローカルストレージとstateを更新
-        const updatedHistories = [newHistoryItem, ...summaryHistories];
-        setSummaryHistories(updatedHistories);
-        localStorage.setItem('summary_histories', JSON.stringify(updatedHistories));
-    }
+    
   };
 
   const handleHistoryClick = (item: HistoryItem) => {
