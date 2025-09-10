@@ -1,8 +1,9 @@
 import logging
 import time
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from passlib.context import CryptContext
 import uvicorn
 import os
 from dotenv import load_dotenv
@@ -10,11 +11,18 @@ from google import genai
 from google.genai import types
 import base64
 import tempfile
+from sqlalchemy.orm import Session
+from .database import Base, engine, SessionLocal, User
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI(title="Team 20 API", version="1.0.0")
+
+# データベーステーブルを作成
+Base.metadata.create_all(bind=engine)
 
 # CORS設定 - フロントエンドからのアクセスを許可
 app.add_middleware(
@@ -41,9 +49,17 @@ async def log_requests(request: Request, call_next):
     
     return response
 
+# データベースセッションの依存性注入
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 # .envファイルから環境変数を読み込む
 logging.info("Attempting to load .env file...")
-if load_dotenv():
+if load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env')):
     logging.info(".env file loaded successfully.")
 else:
     logging.warning(".env file not found or failed to load.")
@@ -53,13 +69,90 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 
+# パスワードハッシュ化のためのコンテキスト
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# JWT設定
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-jwt-key") # 環境変数またはデフォルトを使用
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_access_token(token: str, credentials_exception):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        return username
+    except JWTError:
+        raise credentials_exception
+
+
+
 class ChatRequest(BaseModel):
     message: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/register")
+async def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    """ユーザー登録エンドポイント"""
+    existing_user = db.query(User).filter(User.username == request.username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="ユーザー名は既に存在します")
+
+    hashed_password = pwd_context.hash(request.password)
+    new_user = User(username=request.username, hashed_password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"message": "ユーザー登録成功！", "username": new_user.username}
+
+@app.post("/api/login")
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """ユーザーログインエンドポイント"""
+    user = db.query(User).filter(User.username == request.username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="無効な認証情報です")
+
+    if not pwd_context.verify(request.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="無効な認証情報です",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/")
 async def root():
     """ルートエンドポイント"""
     return {"message": "Team 20 API へようこそ！"}
+
+@app.get("/api/protected")
+async def protected_route(token: str = Depends(verify_access_token)):
+    """保護されたエンドポイント - JWT認証が必要"""
+    return {"message": f"認証成功！ユーザー: {token}"}
 
 @app.get("/api/health")
 async def health_check():
