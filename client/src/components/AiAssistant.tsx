@@ -119,19 +119,19 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
         <Button variant="outlined" onClick={() => handleSend(
-          'コードを生成してください:'
+          '要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．'
           )}>
           コード生成
         </Button>
         <Button variant="outlined" onClick={() => handleSend(
-          '用語を解説してください:'
+          '用語を解説してください'
           )}>
           用語解説
         </Button>
         <Button variant="outlined" onClick={() => handleSend(
-          '検索してください:'
+          '要約内容が正しいか検索してください'
           )}>
-          検索
+          要約内容チェック
         </Button>
       </Box>
       <Box sx={{ display: 'flex' }}>
