@@ -13,7 +13,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename }) => {
     <Paper 
       sx={{ 
         height: '100%', 
-        p: 3,
+        p: 2,
         border: '1px solid #e0e0e0',
         borderRadius: 2,
         display: 'flex',
