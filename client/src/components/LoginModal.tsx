@@ -12,9 +12,10 @@ import {
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
+  showSnackbar: (message: string, severity: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
-const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
+const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -22,6 +23,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
   useEffect(() => {
     if (open) {
       setErrorMessage(''); // Clear error when modal opens
+      setUsername(''); // Clear username
+      setPassword(''); // Clear password
     }
   }, [open]);
 
@@ -38,7 +41,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
       if (response.ok) {
         const data = await response.json();
         localStorage.setItem('access_token', data.access_token);
-        console.log('ログイン成功！トークンを保存しました。');
+        showSnackbar('ログインに成功しました！', 'success'); // Call showSnackbar
         setErrorMessage(''); // Clear any previous error
         onClose(); // ログイン成功時にモーダルを閉じる
       } else {

@@ -8,7 +8,9 @@ import {
   Paper,
   IconButton,
   Menu,
-  MenuItem
+  MenuItem,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import PdfViewer from './components/PdfViewer';
@@ -26,6 +28,9 @@ function App() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -50,7 +55,20 @@ function App() {
     localStorage.removeItem('access_token');
     setIsLoggedIn(false);
     handleCloseMenu();
-    console.log('ログアウトしました。');
+    showSnackbar('ログアウトしました。', 'info');
+  };
+
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  };
+
+  const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbarOpen(false);
   };
 
   const handleSummaryGenerated = (summary: string, filename: string) => {
@@ -123,11 +141,17 @@ function App() {
       <LoginModal
         open={isLoginModalOpen}
         onClose={handleCloseLoginModal}
+        showSnackbar={showSnackbar}
       />
       <RegisterModal
         open={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
       />
+      <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+        <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </>
   );
 }
