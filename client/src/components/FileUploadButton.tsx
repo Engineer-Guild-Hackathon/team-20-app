@@ -41,8 +41,15 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       const formData = new FormData();
       formData.append('file', file);
 
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch('http://localhost:8000/api/upload-pdf', {
         method: 'POST',
+        headers: headers,
         body: formData,
       });
 

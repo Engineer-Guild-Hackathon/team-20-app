@@ -21,10 +21,19 @@ import LoginModal from './components/LoginModal';
 import RegisterModal from './components/RegisterModal';
 import MyPage from './components/MyPage';
 
+// 履歴項目の型定義
+interface HistoryItem {
+  id?: number; // DBからの履歴にはidがある
+  filename: string;
+  summary: string;
+  created_at?: string; // DBからの履歴にはcreated_atがある
+}
+
 function App() {
   const location = useLocation();
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
+  const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]); // 履歴用のstate
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -38,6 +47,47 @@ function App() {
     const token = localStorage.getItem('access_token');
     setIsLoggedIn(!!token);
   }, []);
+
+  // ログイン状態に応じて履歴を読み込む
+  useEffect(() => {
+    const fetchHistories = async () => {
+      if (isLoggedIn) {
+        // ログインしている場合：APIから取得
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+
+        try {
+          const response = await fetch('http://localhost:8000/api/summaries', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          if (response.ok) {
+            const data: HistoryItem[] = await response.json();
+            setSummaryHistories(data);
+            // ローカルの履歴はクリアする
+            localStorage.removeItem('summary_histories');
+          } else {
+            console.error('Failed to fetch summary histories');
+            setSummaryHistories([]); // エラー時は空にする
+          }
+        } catch (error) {
+          console.error('Error fetching summary histories:', error);
+          setSummaryHistories([]);
+        }
+      } else {
+        // ログインしていない場合：ローカルストレージから取得
+        const localHistories = localStorage.getItem('summary_histories');
+        if (localHistories) {
+          setSummaryHistories(JSON.parse(localHistories));
+        } else {
+          setSummaryHistories([]);
+        }
+      }
+    };
+
+    fetchHistories();
+  }, [isLoggedIn]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -76,6 +126,24 @@ function App() {
   const handleSummaryGenerated = (summary: string, filename: string) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
+
+    const newHistoryItem: HistoryItem = {
+      filename,
+      summary,
+      created_at: new Date().toISOString(), // ローカルでの作成日時
+    };
+
+    // ログイン状態に応じて履歴を更新
+    if (isLoggedIn) {
+        // ログイン中は、新しい履歴を既存の履歴の先頭に追加して即時反映
+        setSummaryHistories(prev => [newHistoryItem, ...prev]);
+        // この後、バックグラウンドでサーバーから最新のリストを再取得するのが理想的だが、今回は楽観的UI更新に留める
+    } else {
+        // 非ログイン中は、ローカルストレージとstateを更新
+        const updatedHistories = [newHistoryItem, ...summaryHistories];
+        setSummaryHistories(updatedHistories);
+        localStorage.setItem('summary_histories', JSON.stringify(updatedHistories));
+    }
   };
   return (
     <>
@@ -147,7 +215,7 @@ function App() {
               </Box>
             </Container>
           } />
-          <Route path="/mypage" element={<MyPage />} />
+          <Route path="/mypage" element={<MyPage histories={summaryHistories} />} />
         </Routes>
       </Box>
       <LoginModal
