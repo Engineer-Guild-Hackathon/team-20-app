@@ -128,14 +128,6 @@ function App() {
   const handleSummaryGenerated = (summary: string, filename: string) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
-
-    const newHistoryItem: HistoryItem = {
-      filename,
-      summary,
-      created_at: new Date().toISOString(), // ローカルでの作成日時
-    };
-
-    
   };
 
   const handleHistoryClick = (item: HistoryItem) => {
@@ -257,12 +249,12 @@ function App() {
             <Routes>
               <Route path="/" element={
                 <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
-                  <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
+                  <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                     <Box sx={{ flex: 1 }}>
                       <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} />
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <AiAssistant />
+                      <AiAssistant pdfSummaryContent={pdfSummary} />
                     </Box>
                     <Box sx={{ flex: 1 }}>
                       <Workspace />

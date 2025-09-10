@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import TryIcon from '@mui/icons-material/Try';
+import React, { useState, useRef, useEffect } from 'react';
+import TryIcon from '@mui/icons-material/Try'
 import {
   Paper,
   Typography,
@@ -10,24 +10,26 @@ import {
   CircularProgress,
   List,
   ListItem,
-  ListItemText,
-  Avatar,
+  // ListItemText, // ListItemText is no longer needed
 } from '@mui/material';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
   sender: 'user' | 'ai';
   text: string;
 }
 
-const AiAssistant: React.FC = () => {
+const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryContent }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (messageToSend?: string) => {
+    const message = messageToSend || input;
+    if (!message.trim()) return;
 
-    const userMessage: Message = { sender: 'user', text: input };
+    const userMessage: Message = { sender: 'user', text: message };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
@@ -38,7 +40,7 @@ const AiAssistant: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ message: message, pdf_summary: pdfSummaryContent }),
       });
 
       if (!response.ok) {
@@ -60,6 +62,13 @@ const AiAssistant: React.FC = () => {
     }
   };
 
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   return (
     <Paper
       sx={{
@@ -79,11 +88,10 @@ const AiAssistant: React.FC = () => {
       </Box>
       <Divider sx={{ mb: 2 }} />
 
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}> {/* Add ref here */}
         <List>
           {messages.map((msg, index) => (
             <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
-              {msg.sender === 'ai' && <Avatar sx={{ mr: 1 }}>AI</Avatar>}
               <Paper
                 elevation={2}
                 sx={{
@@ -93,9 +101,13 @@ const AiAssistant: React.FC = () => {
                   maxWidth: '80%',
                 }}
               >
-                <ListItemText primary={msg.text} />
+                <ReactMarkdown
+                  components={{
+                    p: ({ children }) => <p style={{ margin: 0 }}>{children}</p>,
+                }}>
+                  {msg.text}
+                </ReactMarkdown>
               </Paper>
-              {msg.sender === 'user' && <Avatar sx={{ ml: 1 }}>U</Avatar>}
             </ListItem>
           ))}
           {loading && (
@@ -104,6 +116,23 @@ const AiAssistant: React.FC = () => {
             </ListItem>
           )}
         </List>
+      </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
+        <Button variant="outlined" onClick={() => handleSend(
+          'コードを生成してください:'
+          )}>
+          コード生成
+        </Button>
+        <Button variant="outlined" onClick={() => handleSend(
+          '用語を解説してください:'
+          )}>
+          用語解説
+        </Button>
+        <Button variant="outlined" onClick={() => handleSend(
+          '検索してください:'
+          )}>
+          検索
+        </Button>
       </Box>
       <Box sx={{ display: 'flex' }}>
         <TextField
@@ -118,7 +147,7 @@ const AiAssistant: React.FC = () => {
         <Button
           variant="contained"
           color="primary"
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={loading}
           sx={{ ml: 1 }}
         >

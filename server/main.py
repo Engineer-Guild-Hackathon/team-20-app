@@ -153,6 +153,7 @@ def get_required_user(authorization: str = Header(...), db: Session = Depends(ge
 
 class ChatRequest(BaseModel):
     message: str
+    pdf_summary: Optional[str] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -221,9 +222,13 @@ async def chat(request: ChatRequest):
 
     client = genai.Client(api_key=API_KEY)
     try:
+        full_content = request.message
+        if request.pdf_summary:
+            full_content = f"以下のPDF要約を考慮して質問に答えてください。\n\nPDF要約:\n{request.pdf_summary}\n\n質問:\n{request.message}"
+
         # 新しいモデル名に変更
         response = client.models.generate_content(
-            model='gemini-2.0-flash-001', contents=request.message
+            model='gemini-2.0-flash-001', contents=full_content
         )
         
         logging.info(f"Generated response: {response.text}")
@@ -236,6 +241,7 @@ async def chat(request: ChatRequest):
         logging.error(f"Error in chat endpoint: {str(e)}")
         # エラーハンドリングを有効化
         raise HTTPException(status_code=500, detail=f"AI応答エラー: {str(e)}")
+
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(

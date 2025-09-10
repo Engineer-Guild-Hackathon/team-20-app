@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { Paper, Typography, Box, Divider, Chip, Button } from '@mui/material';
+import { Paper, Typography, Box, Divider, Chip, Button } from '@mui/material'; // Typography commented out
 import { PictureAsPdf, AutoAwesome, Save as SaveIcon } from '@mui/icons-material';
+import ReactMarkdown from 'react-markdown'; // Import ReactMarkdown
 
 interface PdfViewerProps {
   summary?: string;
@@ -51,16 +52,9 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, onSave }) => {
             </Typography>
           </Box>
           
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              lineHeight: 1.8,
-              whiteSpace: 'pre-wrap',
-              fontFamily: 'inherit'
-            }}
-          >
+          <ReactMarkdown>
             {summary}
-          </Typography>
+          </ReactMarkdown>
           {summary && ( // 要約がある場合のみボタンを表示
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
               <Button
