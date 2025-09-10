@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { 
   Typography, 
   Container, 
   Box, 
   AppBar, 
   Toolbar,
-  Paper,
   IconButton,
   Menu,
   MenuItem,
@@ -19,8 +19,10 @@ import Workspace from './components/Workspace';
 import FileUploadButton from './components/FileUploadButton';
 import LoginModal from './components/LoginModal';
 import RegisterModal from './components/RegisterModal';
+import MyPage from './components/MyPage';
 
 function App() {
+  const location = useLocation();
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
@@ -58,7 +60,7 @@ function App() {
     showSnackbar('ログアウトしました。', 'info');
   };
 
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning' ) => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setSnackbarOpen(true);
@@ -83,9 +85,11 @@ function App() {
           <Container maxWidth="xl">
             <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
               <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
-                CogniStudy
+                <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                  CogniStudy
+                </Link>
               </Typography>
-              <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
+              {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}
               <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
                 <AccountCircleIcon fontSize="large" />
               </IconButton>
@@ -105,7 +109,10 @@ function App() {
                 onClose={handleCloseMenu}
               >
                 {isLoggedIn ? (
-                  <MenuItem onClick={handleLogout}>ログアウト</MenuItem>
+                  [
+                    <MenuItem key="mypage" component={Link} to="/mypage" onClick={handleCloseMenu}>マイページ</MenuItem>,
+                    <MenuItem key="logout" onClick={handleLogout}>ログアウト</MenuItem>
+                  ]
                 ) : (
                   <>
                     <MenuItem onClick={() => {
@@ -124,19 +131,24 @@ function App() {
         </AppBar>
 
         {/* 下部の3つのセクション */}
-        <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
-          <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
-            <Box sx={{ flex: 1 }}>
-              <PdfViewer summary={pdfSummary} filename={pdfFilename} />
-            </Box>
-            <Box sx={{ flex: 1 }}>
-              <AiAssistant />
-            </Box>
-            <Box sx={{ flex: 1 }}>
-              <Workspace />
-            </Box>
-          </Box>
-        </Container>
+        <Routes>
+          <Route path="/" element={
+            <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
+                <Box sx={{ flex: 1 }}>
+                  <PdfViewer summary={pdfSummary} filename={pdfFilename} />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <AiAssistant />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Workspace />
+                </Box>
+              </Box>
+            </Container>
+          } />
+          <Route path="/mypage" element={<MyPage />} />
+        </Routes>
       </Box>
       <LoginModal
         open={isLoginModalOpen}
