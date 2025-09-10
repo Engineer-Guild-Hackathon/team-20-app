@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Typography, 
   Container, 
@@ -123,6 +123,8 @@ function App() {
     setSnackbarOpen(false);
   };
 
+  const navigate = useNavigate(); // 追加
+
   const handleSummaryGenerated = (summary: string, filename: string) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
@@ -145,95 +147,158 @@ function App() {
         localStorage.setItem('summary_histories', JSON.stringify(updatedHistories));
     }
   };
-  return (
-    <>
-      <Box sx={{ flexGrow: 1 }}>
-        {/* 上部のヘッダーセクション */}
-        <AppBar position="static" sx={{ backgroundColor: '#1976d2', py: 1 }}>
-          <Container maxWidth="xl">
-            <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
-              <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
-                <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-                  CogniStudy
-                </Link>
-              </Typography>
-              {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}
-              <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
-                <AccountCircleIcon fontSize="large" />
-              </IconButton>
-              <Menu
-                id="menu-appbar"
-                anchorEl={anchorEl}
-                anchorOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                keepMounted
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                open={openMenu}
-                onClose={handleCloseMenu}
-              >
-                {isLoggedIn ? (
-                  [
-                    <MenuItem key="mypage" component={Link} to="/mypage" onClick={handleCloseMenu}>マイページ</MenuItem>,
-                    <MenuItem key="logout" onClick={handleLogout}>ログアウト</MenuItem>
-                  ]
-                ) : (
-                  <>
-                    <MenuItem onClick={() => {
-                      handleCloseMenu();
-                      setIsLoginModalOpen(true);
-                    }}>ログイン</MenuItem>
-                    <MenuItem onClick={() => {
-                      handleCloseMenu();
-                      setIsRegisterModalOpen(true);
-                    }}>新規登録</MenuItem>
-                  </>
-                )}
-              </Menu>
-            </Toolbar>
-          </Container>
-        </AppBar>
 
-        {/* 下部の3つのセクション */}
-        <Routes>
-          <Route path="/" element={
-            <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
-              <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
-                <Box sx={{ flex: 1 }}>
-                  <PdfViewer summary={pdfSummary} filename={pdfFilename} />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <AiAssistant />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Workspace />
-                </Box>
-              </Box>
-            </Container>
-          } />
-          <Route path="/mypage" element={<MyPage histories={summaryHistories} />} />
-        </Routes>
-      </Box>
-      <LoginModal
-        open={isLoginModalOpen}
-        onClose={handleCloseLoginModal}
-        showSnackbar={showSnackbar}
-      />
-      <RegisterModal
-        open={isRegisterModalOpen}
-        onClose={() => setIsRegisterModalOpen(false)}
-      />
-      <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleCloseSnackbar}>
-        <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
-    </>
-  );
+  const handleHistoryClick = (item: HistoryItem) => {
+    setPdfSummary(item.summary);
+    setPdfFilename(item.filename);
+    navigate('/'); // メインページに遷移
+  };
+
+  // 後から保存する関数
+  const handleSaveSummary = async (summary: string, filename: string) => {
+    if (isLoggedIn) {
+      // ログインしている場合：API経由でDBに保存
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        showSnackbar('ログインしていません。', 'warning');
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:8000/api/save-summary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ filename, summary }),
+        });
+
+        if (response.ok) {
+          showSnackbar('要約を保存しました！', 'success');
+          // 保存成功後、履歴を再取得して最新の状態にする
+          // これはuseEffectがisLoggedInを監視しているので、isLoggedInを一時的にfalseにしてtrueに戻すか、
+          // 直接fetchHistoriesを呼び出すか、あるいは楽観的更新を行う
+          // ここではシンプルに楽観的更新を行う
+          const newHistoryItem: HistoryItem = {
+            filename,
+            summary,
+            created_at: new Date().toISOString(),
+          };
+          setSummaryHistories(prev => [newHistoryItem, ...prev]);
+
+        } else {
+          const errorData = await response.json();
+          showSnackbar(`保存に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error saving summary:', error);
+        showSnackbar('ネットワークエラーが発生しました。', 'error');
+      }
+    } else {
+      // ログインしていない場合：ローカルストレージに保存
+      const newHistoryItem: HistoryItem = {
+        filename,
+        summary,
+        created_at: new Date().toISOString(),
+      };
+      const currentLocalHistories = JSON.parse(localStorage.getItem('summary_histories') || '[]');
+      const updatedLocalHistories = [newHistoryItem, ...currentLocalHistories];
+      localStorage.setItem('summary_histories', JSON.stringify(updatedLocalHistories));
+      setSummaryHistories(updatedLocalHistories);
+      showSnackbar('要約をブラウザに保存しました！', 'success');
+    }
+  };
+
+  return (
+        <>
+          <Box sx={{ flexGrow: 1 }}>
+            {/* 上部のヘッダーセクション */}
+            <AppBar position="static" sx={{ backgroundColor: '#1976d2', py: 1 }}>
+              <Container maxWidth="xl">
+                <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
+                  <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
+                    <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      CogniStudy
+                    </Link>
+                  </Typography>
+                  {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}
+                  <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
+                    <AccountCircleIcon fontSize="large" />
+                  </IconButton>
+                  <Menu
+                    id="menu-appbar"
+                    anchorEl={anchorEl}
+                    anchorOrigin={{
+                      vertical: 'top',
+                      horizontal: 'right',
+                    }}
+                    keepMounted
+                    transformOrigin={{
+                      vertical: 'top',
+                      horizontal: 'right',
+                    }}
+                    open={openMenu}
+                    onClose={handleCloseMenu}
+                  >
+                    {isLoggedIn ? (
+                      [
+                        <MenuItem key="mypage" component={Link} to="/mypage" onClick={handleCloseMenu}>マイページ</MenuItem>,
+                        <MenuItem key="logout" onClick={handleLogout}>ログアウト</MenuItem>
+                      ]
+                    ) : (
+                      <>
+                        <MenuItem onClick={() => {
+                          handleCloseMenu();
+                          setIsLoginModalOpen(true);
+                        }}>ログイン</MenuItem>
+                        <MenuItem onClick={() => {
+                          handleCloseMenu();
+                          setIsRegisterModalOpen(true);
+                        }}>新規登録</MenuItem>
+                      </>
+                    )}
+                  </Menu>
+                </Toolbar>
+              </Container>
+            </AppBar>
+
+            {/* 下部の3つのセクション */}
+            <Routes>
+              <Route path="/" element={
+                <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
+                  <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 120px)' }}>
+                    <Box sx={{ flex: 1 }}>
+                      <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <AiAssistant />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Workspace />
+                    </Box>
+                  </Box>
+                </Container>
+              } />
+              <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} />} />
+            </Routes>
+          </Box>
+          <LoginModal
+            open={isLoginModalOpen}
+            onClose={handleCloseLoginModal}
+            showSnackbar={showSnackbar}
+          />
+          <RegisterModal
+            open={isRegisterModalOpen}
+            onClose={() => setIsRegisterModalOpen(false)}
+          />
+          <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+            <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
+              {snackbarMessage}
+            </Alert>
+          </Snackbar>
+        </>
+      );
 }
 
 export default App;

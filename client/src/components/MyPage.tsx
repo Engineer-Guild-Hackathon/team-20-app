@@ -12,15 +12,10 @@ interface HistoryItem {
 
 interface MyPageProps {
   histories: HistoryItem[];
+  onHistoryClick: (item: HistoryItem) => void; // 追加
 }
 
-const MyPage: React.FC<MyPageProps> = ({ histories }) => {
-  // 履歴項目クリック時のダミー関数
-  const handleHistoryClick = (item: HistoryItem) => {
-    // 現状ではマイページでクリックしても何もしない
-    // 将来的に詳細表示などに使える
-    console.log('History item clicked:', item);
-  };
+const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick }) => { // onHistoryClickを追加
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
@@ -31,7 +26,7 @@ const MyPage: React.FC<MyPageProps> = ({ histories }) => {
         要約履歴
       </Typography>
       <Box sx={{ height: 'calc(100vh - 250px)' }}>
-        <SummaryHistory histories={histories} onHistoryClick={handleHistoryClick} />
+        <SummaryHistory histories={histories} onHistoryClick={onHistoryClick} /> {/* onHistoryClickをそのまま渡す */}
       </Box>
     </Container>
   );

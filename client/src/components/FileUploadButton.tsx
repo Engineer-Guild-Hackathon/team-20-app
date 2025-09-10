@@ -11,6 +11,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>('');
   const [showError, setShowError] = useState(false);
+  
 
   const handleUpload = () => {
     fileInputRef.current?.click();
@@ -40,6 +41,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      
 
       const token = localStorage.getItem('access_token');
       const headers: HeadersInit = {};
@@ -85,6 +87,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
         accept=".pdf"
         style={{ display: 'none' }}
       />
+      
       
       <Button 
         variant="contained" 

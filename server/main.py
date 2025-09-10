@@ -1,6 +1,6 @@
 import logging
 import time
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status, Header
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -162,6 +162,10 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
 
+class SaveSummaryRequest(BaseModel):
+    filename: str
+    summary: str
+
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     """ユーザー登録エンドポイント"""
@@ -236,6 +240,7 @@ async def chat(request: ChatRequest):
 @app.post("/api/upload-pdf")
 async def upload_pdf(
     file: UploadFile = File(...), 
+    save_history: bool = Form(True), # 追加
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -273,8 +278,8 @@ async def upload_pdf(
         else:
             summary = "要約の生成に失敗しました"
         
-        # ログインしている場合のみ履歴を保存
-        if current_user:
+        # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
+        if current_user and save_history: # 条件追加
             new_history = SummaryHistory(
                 user_id=current_user.id,
                 filename=file.filename,
@@ -306,6 +311,28 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
     """認証されたユーザーの要約履歴を取得する"""
     summaries = db.query(SummaryHistory).filter(SummaryHistory.user_id == current_user.id).order_by(SummaryHistory.created_at.desc()).all()
     return summaries
+
+@app.post("/api/save-summary")
+async def save_summary(
+    request: SaveSummaryRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """要約をデータベースに保存するエンドポイント"""
+    try:
+        new_history = SummaryHistory(
+            user_id=current_user.id,
+            filename=request.filename,
+            summary=request.summary
+        )
+        db.add(new_history)
+        db.commit()
+        db.refresh(new_history)
+        logging.info(f"Summary saved via /api/save-summary for user: {current_user.username}")
+        return {"message": "要約が正常に保存されました", "id": new_history.id}
+    except Exception as e:
+        logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"要約の保存中にエラーが発生しました: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
