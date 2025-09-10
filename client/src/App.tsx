@@ -262,7 +262,7 @@ function App() {
                       <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} />
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <AiAssistant />
+                      <AiAssistant pdfSummaryContent={pdfSummary} />
                     </Box>
                     <Box sx={{ flex: 1 }}>
                       <Workspace />

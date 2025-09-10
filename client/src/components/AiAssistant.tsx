@@ -19,7 +19,7 @@ interface Message {
   text: string;
 }
 
-const AiAssistant: React.FC = () => {
+const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryContent }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +38,7 @@ const AiAssistant: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ message: input, pdf_summary: pdfSummaryContent }),
       });
 
       if (!response.ok) {
