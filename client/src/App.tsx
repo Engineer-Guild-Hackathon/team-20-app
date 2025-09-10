@@ -16,11 +16,13 @@ import AiAssistant from './components/AiAssistant';
 import Workspace from './components/Workspace';
 import FileUploadButton from './components/FileUploadButton';
 import LoginModal from './components/LoginModal';
+import RegisterModal from './components/RegisterModal';
 
 function App() {
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -87,10 +89,16 @@ function App() {
                 {isLoggedIn ? (
                   <MenuItem onClick={handleLogout}>ログアウト</MenuItem>
                 ) : (
-                  <MenuItem onClick={() => {
-                    handleCloseMenu();
-                    setIsLoginModalOpen(true);
-                  }}>ログイン</MenuItem>
+                  <>
+                    <MenuItem onClick={() => {
+                      handleCloseMenu();
+                      setIsLoginModalOpen(true);
+                    }}>ログイン</MenuItem>
+                    <MenuItem onClick={() => {
+                      handleCloseMenu();
+                      setIsRegisterModalOpen(true);
+                    }}>新規登録</MenuItem>
+                  </>
                 )}
               </Menu>
             </Toolbar>
@@ -115,6 +123,10 @@ function App() {
       <LoginModal
         open={isLoginModalOpen}
         onClose={handleCloseLoginModal}
+      />
+      <RegisterModal
+        open={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
       />
     </>
   );
