@@ -105,6 +105,17 @@ const AiAssistant: React.FC = () => {
           )}
         </List>
       </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
+        <Button variant="outlined" onClick={() => setInput('コードを生成してください:')}>
+          コード生成
+        </Button>
+        <Button variant="outlined" onClick={() => setInput('用語を解説してください:')}>
+          用語解説
+        </Button>
+        <Button variant="outlined" onClick={() => setInput('検索してください:')}>
+          検索
+        </Button>
+      </Box>
       <Box sx={{ display: 'flex' }}>
         <TextField
           fullWidth
