@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Typography, 
   Container, 
@@ -6,7 +6,9 @@ import {
   AppBar, 
   Toolbar,
   Paper,
-  IconButton
+  IconButton,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import PdfViewer from './components/PdfViewer';
@@ -19,6 +21,35 @@ function App() {
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const openMenu = Boolean(anchorEl);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    setIsLoggedIn(!!token);
+  }, []);
+
+  const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+  };
+
+  const handleCloseLoginModal = () => {
+    setIsLoginModalOpen(false);
+    const token = localStorage.getItem('access_token');
+    setIsLoggedIn(!!token);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    setIsLoggedIn(false);
+    handleCloseMenu();
+    console.log('ログアウトしました。');
+  };
 
   const handleSummaryGenerated = (summary: string, filename: string) => {
     setPdfSummary(summary);
@@ -35,9 +66,33 @@ function App() {
                 CogniStudy
               </Typography>
               <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
-              <IconButton color="inherit" aria-label="account" onClick={() => setIsLoginModalOpen(true)}>
+              <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
                 <AccountCircleIcon fontSize="large" />
               </IconButton>
+              <Menu
+                id="menu-appbar"
+                anchorEl={anchorEl}
+                anchorOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                keepMounted
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                open={openMenu}
+                onClose={handleCloseMenu}
+              >
+                {isLoggedIn ? (
+                  <MenuItem onClick={handleLogout}>ログアウト</MenuItem>
+                ) : (
+                  <MenuItem onClick={() => {
+                    handleCloseMenu();
+                    setIsLoginModalOpen(true);
+                  }}>ログイン</MenuItem>
+                )}
+              </Menu>
             </Toolbar>
           </Container>
         </AppBar>
@@ -59,7 +114,7 @@ function App() {
       </Box>
       <LoginModal
         open={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
+        onClose={handleCloseLoginModal}
       />
     </>
   );

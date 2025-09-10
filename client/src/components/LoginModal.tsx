@@ -36,7 +36,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose }) => {
       });
 
       if (response.ok) {
-        console.log('ログイン成功！');
+        const data = await response.json();
+        localStorage.setItem('access_token', data.access_token);
+        console.log('ログイン成功！トークンを保存しました。');
         setErrorMessage(''); // Clear any previous error
         onClose(); // ログイン成功時にモーダルを閉じる
       } else {
