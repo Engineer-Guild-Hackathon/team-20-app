@@ -32,6 +32,7 @@ interface HistoryItem {
   team_id?: number;
   username?: string;
   team_name?: string;
+  tags?: string[]; // 追加
 }
 
 interface HistoryContent {
@@ -48,6 +49,7 @@ function App() {
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
   const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
+  const [pdfTags, setPdfTags] = useState<string[]>([]); // 追加
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
   const [initialContents, setInitialContents] = useState<HistoryContent[] | undefined>(undefined);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
@@ -117,10 +119,11 @@ function App() {
     setSnackbarOpen(false);
   };
 
-  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number) => {
+  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[]) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
     setPdfSummaryId(summaryId);
+    setPdfTags(tags || []); // 追加
     setInitialContents(undefined);
     setChatMessages([]);
   };
@@ -153,7 +156,7 @@ function App() {
     setChatMessages(messages);
   };
 
-  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null) => {
+  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, tags?: string[] | null) => {
     if (!isLoggedIn) {
       showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);
@@ -167,7 +170,7 @@ function App() {
       const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ filename, summary, team_id: teamId }),
+          body: JSON.stringify({ filename, summary, team_id: teamId, tags: tags }),
       });
 
       if (!summaryResponse.ok) {
@@ -200,7 +203,7 @@ function App() {
       showSnackbar('要約とチャット履歴を保存しました！', 'success');
       
       // 履歴リストを更新
-      const newHistoryItem: HistoryItem = { id: newSummaryId, filename, summary, created_at: new Date().toISOString() };
+      const newHistoryItem: HistoryItem = { id: newSummaryId, filename, summary, created_at: new Date().toISOString(), tags: tags || [] };
       setSummaryHistories(prev => [newHistoryItem, ...prev]);
 
     } catch (error) {
@@ -256,7 +259,7 @@ function App() {
             <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
               <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                 <Box sx={{ flex: 1 }}>
-                  <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} />
+                  <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} tags={pdfTags} />
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <AiAssistant 

@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 import uuid
 from fastapi.responses import FileResponse
+import re # 追加
 
 # ファイル保存ディレクトリの設定
 UPLOAD_DIRECTORY = "./shared_files"
@@ -499,7 +500,7 @@ async def upload_pdf(
             contents=[
                 {
                     'parts': [
-                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点を箇条書きで整理し、わかりやすく説明してください。'},
+                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。また要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。'},
                         {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
                     ]
                 }
@@ -509,12 +510,23 @@ async def upload_pdf(
         logging.info(f"PDF summary generated for file: {file.filename}")
         
         if hasattr(response, 'text') and response.text:
-            summary = response.text
+            full_response_text = response.text
         elif hasattr(response, 'candidates') and response.candidates:
-            summary = response.candidates[0].content.parts[0].text
+            full_response_text = response.candidates[0].content.parts[0].text
         else:
-            summary = "要約の生成に失敗しました"
+            full_response_text = "要約の生成に失敗しました"
         
+        summary = full_response_text # 初期値はフルレスポンス
+        generated_tags = []
+        
+        # タグを正規表現で抽出
+        tag_match = re.search(r'\[タグ:\s*(.*?)\s*\]', full_response_text)
+        if tag_match:
+            tags_str = tag_match.group(1)
+            generated_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+            # 要約からタグ部分を削除
+            summary = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
+            
         summary_id = None # 初期化
         # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
         if current_user and save_history.lower() == 'true': # 文字列比較に変更
@@ -522,6 +534,7 @@ async def upload_pdf(
                 user_id=current_user.id,
                 filename=file.filename,
                 summary=summary,
+                tags=",".join(generated_tags) if generated_tags else None, # タグを保存
                 created_at=datetime.now(timezone.utc)
             )
             db.add(new_history)
@@ -534,7 +547,8 @@ async def upload_pdf(
             "filename": file.filename,
             "summary": summary,
             "status": "success",
-            "summary_id": summary_id # レスポンスに追加
+            "summary_id": summary_id, # レスポンスに追加
+            "tags": generated_tags # 生成されたタグをレスポンスに追加
         }
         
     except HTTPException:

@@ -3,7 +3,7 @@ import { Button, CircularProgress, Alert, Snackbar } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 
 interface FileUploadButtonProps {
-  onSummaryGenerated: (summary: string, filename: string, summaryId?: number) => void;
+  onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[]) => void;
 }
 
 const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated }) => {
@@ -58,7 +58,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       const result = await response.json();
       
       // Pass the summary_id back to the parent component
-      onSummaryGenerated(result.summary, result.filename, result.summary_id);
+      onSummaryGenerated(result.summary, result.filename, result.summary_id, result.tags);
       
     } catch (error) {
       console.error('Upload error:', error);
