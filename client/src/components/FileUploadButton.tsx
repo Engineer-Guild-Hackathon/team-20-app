@@ -1,9 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { Button, CircularProgress, Alert, Snackbar } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 
 interface FileUploadButtonProps {
-  onSummaryGenerated: (summary: string, filename: string) => void;
+  onSummaryGenerated: (summary: string, filename: string, summaryId?: number) => void;
 }
 
 const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated }) => {
@@ -11,7 +11,6 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>('');
   const [showError, setShowError] = useState(false);
-  
 
   const handleUpload = () => {
     fileInputRef.current?.click();
@@ -21,14 +20,12 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // PDF形式チェック
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('PDFファイルのみアップロード可能です');
       setShowError(true);
       return;
     }
 
-    // ファイルサイズチェック (10MB)
     if (file.size > 10 * 1024 * 1024) {
       setError('ファイルサイズが大きすぎます (10MB以下にしてください)');
       setShowError(true);
@@ -38,21 +35,19 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     setIsUploading(true);
     setError('');
 
+    const formData = new FormData();
+    formData.append('file', file);
+
+    formData.append('save_history', 'false');
+
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
+      // Note: We are not setting Content-Type header here.
+      // The browser will automatically set it to multipart/form-data
+      // and include the boundary, which is required for FormData.
       const response = await fetch('http://localhost:8000/api/upload-pdf', {
         method: 'POST',
-        headers: headers,
         body: formData,
+        // Authorization header is not needed for this endpoint as it's handled by get_current_user
       });
 
       if (!response.ok) {
@@ -62,8 +57,8 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
 
       const result = await response.json();
       
-      // 要約をコールバックで親コンポーネントに渡す
-      onSummaryGenerated(result.summary, result.filename);
+      // Pass the summary_id back to the parent component
+      onSummaryGenerated(result.summary, result.filename, result.summary_id);
       
     } catch (error) {
       console.error('Upload error:', error);
@@ -71,7 +66,6 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       setShowError(true);
     } finally {
       setIsUploading(false);
-      // ファイル入力をリセット
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -87,7 +81,6 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
         accept=".pdf"
         style={{ display: 'none' }}
       />
-      
       
       <Button 
         variant="contained" 

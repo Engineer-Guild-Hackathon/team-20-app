@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import TryIcon from '@mui/icons-material/Try'
+import TryIcon from '@mui/icons-material/Try';
 import {
   Paper,
   Typography,
@@ -10,20 +10,40 @@ import {
   CircularProgress,
   List,
   ListItem,
-  // ListItemText, // ListItemText is no longer needed
 } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 
-interface Message {
+// 型定義
+export interface Message {
   sender: 'user' | 'ai';
   text: string;
 }
 
-const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryContent }) => {
+interface HistoryContent {
+  id: number;
+  summary_history_id: number;
+  section_type: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AiAssistantProps {
+  pdfSummaryContent?: string;
+  initialContents?: HistoryContent[];
+  onMessagesChange: (messages: Message[]) => void;
+}
+
+const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialContents, onMessagesChange }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // メッセージが変更されるたびに親コンポーネントに通知する
+  useEffect(() => {
+    onMessagesChange(messages);
+  }, [messages, onMessagesChange]);
 
   const handleSend = async (messageToSend?: string) => {
     const message = messageToSend || input;
@@ -50,6 +70,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
       const data = await response.json();
       const aiMessage: Message = { sender: 'ai', text: data.reply };
       setMessages((prev) => [...prev, aiMessage]);
+
     } catch (error) {
       console.error('Error fetching AI response:', error);
       const errorMessage: Message = {
@@ -62,7 +83,30 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
     }
   };
 
-  // Scroll to bottom on new messages
+  // 初期コンテンツ（履歴）の読み込み
+  useEffect(() => {
+    const chatHistory = initialContents?.find(c => c.section_type === 'ai_chat');
+    if (chatHistory && chatHistory.content) {
+      try {
+        const parsedMessages = JSON.parse(chatHistory.content);
+        setMessages(parsedMessages);
+      } catch (e) {
+        console.error("Failed to parse chat history:", e);
+        setMessages([]);
+      }
+    } else {
+      setMessages([]); // 履歴がない場合はクリア
+    }
+  }, [initialContents]);
+
+  // 新しいPDFが読み込まれたらチャットをリセット
+  useEffect(() => {
+      if (!initialContents) {
+        setMessages([]);
+      }
+  }, [pdfSummaryContent, initialContents]);
+
+  // メッセージの追加時に一番下にスクロール
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
@@ -88,7 +132,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
       </Box>
       <Divider sx={{ mb: 2 }} />
 
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}> {/* Add ref here */}
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}>
         <List>
           {messages.map((msg, index) => (
             <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -118,19 +162,13 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
         </List>
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
-        <Button variant="outlined" onClick={() => handleSend(
-          '要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．'
-          )}>
+        <Button variant="outlined" onClick={() => handleSend('要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．')}>
           コード生成
         </Button>
-        <Button variant="outlined" onClick={() => handleSend(
-          '用語を解説してください'
-          )}>
+        <Button variant="outlined" onClick={() => handleSend('用語を解説してください')}>
           用語解説
         </Button>
-        <Button variant="outlined" onClick={() => handleSend(
-          '要約内容が正しいか検索してください'
-          )}>
+        <Button variant="outlined" onClick={() => handleSend('要約内容が正しいか検索してください')}>
           要約内容チェック
         </Button>
       </Box>

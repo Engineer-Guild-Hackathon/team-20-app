@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, TeamFile
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 
 # アップロードディレクトリの設定
 UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
@@ -187,6 +187,35 @@ class TeamCreateRequest(BaseModel):
 class CommentCreateRequest(BaseModel):
     summary_id: int
     content: str
+
+
+class HistoryContentCreateRequest(BaseModel):
+    summary_history_id: int
+    section_type: str
+    content: str # JSON string
+
+class HistoryContentResponse(BaseModel):
+    id: int
+    summary_history_id: int
+    section_type: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class SummaryHistoryDetailResponse(BaseModel):
+    id: int
+    user_id: int
+    team_id: Optional[int] = None
+    filename: str
+    summary: str
+    created_at: datetime
+    contents: List[HistoryContentResponse] = []
+
+    class Config:
+        from_attributes = True
 
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -431,7 +460,7 @@ async def chat(request: ChatRequest):
 @app.post("/api/upload-pdf")
 async def upload_pdf(
     file: UploadFile = File(...), 
-    save_history: bool = Form(True), # 追加
+    save_history: str = Form("true"), # boolからstrに変更
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -469,8 +498,9 @@ async def upload_pdf(
         else:
             summary = "要約の生成に失敗しました"
         
+        summary_id = None # 初期化
         # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
-        if current_user and save_history: # 条件追加
+        if current_user and save_history.lower() == 'true': # 文字列比較に変更
             new_history = SummaryHistory(
                 user_id=current_user.id,
                 filename=file.filename,
@@ -478,12 +508,15 @@ async def upload_pdf(
             )
             db.add(new_history)
             db.commit()
-            logging.info(f"Summary history saved for user: {current_user.username}")
+            db.refresh(new_history) # idを取得するためにrefresh
+            summary_id = new_history.id # idをセット
+            logging.info(f"Summary history saved for user: {current_user.username} with ID: {summary_id}")
 
         return {
             "filename": file.filename,
             "summary": summary,
-            "status": "success"
+            "status": "success",
+            "summary_id": summary_id # レスポンスに追加
         }
         
     except HTTPException:
@@ -828,6 +861,87 @@ async def save_summary(
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"要約の保存中にエラーが発生しました: {str(e)}")
+
+
+@app.put("/api/history-contents")
+async def upsert_history_content(
+    request: HistoryContentCreateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """履歴コンテンツ（チャット履歴など）を作成または更新する"""
+    summary_history = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_history_id).first()
+    if not summary_history:
+        raise HTTPException(status_code=404, detail="指定された要約履歴が見つかりません")
+
+    # 権限チェック
+    is_owner = summary_history.user_id == current_user.id
+    is_team_member = False
+    if summary_history.team_id:
+        membership = db.query(TeamMember).filter(
+            TeamMember.team_id == summary_history.team_id,
+            TeamMember.user_id == current_user.id
+        ).first()
+        if membership:
+            is_team_member = True
+
+    if not is_owner and not is_team_member:
+        raise HTTPException(status_code=403, detail="このコンテンツを更新する権限がありません")
+
+    # 既存のコンテンツを検索
+    history_content = db.query(HistoryContent).filter(
+        HistoryContent.summary_history_id == request.summary_history_id,
+        HistoryContent.section_type == request.section_type
+    ).first()
+
+    if history_content:
+        # 更新
+        history_content.content = request.content
+        message = "コンテンツが更新されました"
+    else:
+        # 作成
+        history_content = HistoryContent(
+            summary_history_id=request.summary_history_id,
+            section_type=request.section_type,
+            content=request.content
+        )
+        db.add(history_content)
+        message = "コンテンツが作成されました"
+    
+    db.commit()
+    db.refresh(history_content)
+    return {"message": message, "content_id": history_content.id}
+
+
+@app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
+async def get_summary_detail(
+    summary_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """IDに基づいて特定の要約履歴とその関連コンテンツを取得する"""
+    summary_history = db.query(SummaryHistory).options(
+        joinedload(SummaryHistory.contents)
+    ).filter(SummaryHistory.id == summary_id).first()
+
+    if not summary_history:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック
+    is_owner = summary_history.user_id == current_user.id
+    is_team_member = False
+    if summary_history.team_id:
+        membership = db.query(TeamMember).filter(
+            TeamMember.team_id == summary_history.team_id,
+            TeamMember.user_id == current_user.id
+        ).first()
+        if membership:
+            is_team_member = True
+
+    if not is_owner and not is_team_member:
+        raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
+
+    return summary_history
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
