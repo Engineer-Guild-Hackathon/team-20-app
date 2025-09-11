@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   Paper,
   Typography,
@@ -241,8 +242,19 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
             </Box>
             <Divider sx={{ my: 2 }} />
             <Typography variant="subtitle2" gutterBottom>要約</Typography>
-            <DialogContentText component="div" sx={{ whiteSpace: 'pre-wrap', maxHeight: '50vh', overflowY: 'auto' }}>
-              {selectedHistory.summary}
+            <DialogContentText
+              component="div"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                maxHeight: '50vh',
+                overflowY: 'auto',
+                border: '1px solid #e0e0e0', // 枠線
+                borderRadius: 1, // 角丸
+                p: 2, // パディング
+                mt: 1, // 上マージン (必要であれば)
+              }}
+            >
+              <ReactMarkdown>{selectedHistory.summary}</ReactMarkdown>
             </DialogContentText>
           </DialogContent>
           <DialogActions>
