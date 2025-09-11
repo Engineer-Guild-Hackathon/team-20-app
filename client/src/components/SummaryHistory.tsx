@@ -205,6 +205,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                         </Box>
                       </>
                     }
+                    secondaryTypographyProps={{ component: 'span' }}
                   />
                 </ListItemButton>
               </ListItem>
