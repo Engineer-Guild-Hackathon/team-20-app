@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Paper,
   Typography,
@@ -8,7 +8,9 @@ import {
   ListItemText,
   Divider,
   Box,
-  Chip
+  Chip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 
@@ -29,6 +31,18 @@ interface SummaryHistoryProps {
 }
 
 const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick }) => {
+  const [filter, setFilter] = useState('all');
+
+  const displayedHistories = histories.filter(item => {
+    if (filter === 'personal') {
+      return !item.team_id;
+    }
+    if (filter === 'team') {
+      return !!item.team_id;
+    }
+    return true; // 'all'
+  });
+
   return (
     <Paper
       sx={{
@@ -40,21 +54,44 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
         flexDirection: 'column',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <HistoryIcon color="primary" />
-        <Typography variant="h6" component="h2">
-          要約履歴
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <HistoryIcon color="primary" />
+          <Typography variant="h6" component="h2">
+            要約履歴
+          </Typography>
+        </Box>
+        <ToggleButtonGroup
+          value={filter}
+          exclusive
+          onChange={(event, newFilter) => {
+            if (newFilter !== null) {
+              setFilter(newFilter);
+            }
+          }}
+          aria-label="history filter"
+          size="small"
+        >
+          <ToggleButton value="all" aria-label="all histories">
+            すべて
+          </ToggleButton>
+          <ToggleButton value="personal" aria-label="personal histories">
+            個人
+          </ToggleButton>
+          <ToggleButton value="team" aria-label="team histories">
+            チーム
+          </ToggleButton>
+        </ToggleButtonGroup>
       </Box>
       <Divider sx={{ mb: 1 }} />
       <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-        {histories.length === 0 ? (
+        {displayedHistories.length === 0 ? (
           <Typography sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
             履歴はありません
           </Typography>
         ) : (
           <List disablePadding>
-            {histories.map((item, index) => (
+            {displayedHistories.map((item, index) => (
               <ListItem key={item.id || index} disablePadding>
                 <ListItemButton onClick={() => onHistoryClick(item)}>
                   <ListItemText
