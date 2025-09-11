@@ -11,10 +11,20 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional, List
+import uuid
+from fastapi.responses import FileResponse
+
+# ファイル保存ディレクトリの設定
+UPLOAD_DIRECTORY = "./shared_files"
+
+# ディレクトリが存在しない場合は作成
+if not os.path.exists(UPLOAD_DIRECTORY):
+    os.makedirs(UPLOAD_DIRECTORY)
+    logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -206,6 +216,17 @@ class SummaryHistoryDetailResponse(BaseModel):
     summary: str
     created_at: datetime
     contents: List[HistoryContentResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class SharedFileResponse(BaseModel):
+    id: int
+    filename: str
+    team_id: int
+    uploaded_by_user_id: int
+    uploaded_by_username: str
+    uploaded_at: datetime
 
     class Config:
         from_attributes = True
@@ -705,6 +726,68 @@ async def save_summary(
         raise HTTPException(status_code=500, detail=f"要約の保存中にエラーが発生しました: {str(e)}")
 
 
+@app.post("/api/teams/{team_id}/files")
+async def upload_shared_file(
+    team_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームにファイルをアップロードするエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # ユーザーがチームのメンバーであることを確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="このチームにファイルをアップロードする権限がありません")
+
+    # ファイルのバリデーション
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="ファイル名がありません")
+    
+    # ファイル名から拡張子を取得し、許可された拡張子か確認
+    file_extension = os.path.splitext(file.filename)[1].lower()
+    if file_extension not in [".pdf", ".txt", ".png", ".jpg", ".jpeg", ".gif"]: # 許可する拡張子を定義
+        raise HTTPException(status_code=400, detail="許可されていないファイル形式です。PDF, TXT, 画像ファイルのみアップロード可能です。")
+
+    # ファイルサイズの制限 (例: 50MB)
+    MAX_FILE_SIZE = 50 * 1024 * 1024 # 50 MB
+    file_content = await file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail=f"ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
+
+    # ファイルを保存
+    # ファイル名の衝突を避けるため、UUIDなどを利用することも検討
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+    except Exception as e:
+        logging.error(f"Error saving file to disk: {e}")
+        raise HTTPException(status_code=500, detail="ファイルの保存中にエラーが発生しました")
+
+    # データベースに記録
+    new_shared_file = SharedFile(
+        filename=file.filename,
+        filepath=file_path,
+        team_id=team_id,
+        uploaded_by_user_id=current_user.id
+    )
+    db.add(new_shared_file)
+    db.commit()
+    db.refresh(new_shared_file)
+
+    return {"message": "ファイルが正常にアップロードされました", "file_id": new_shared_file.id, "filename": new_shared_file.filename}
+
+
 @app.put("/api/history-contents")
 async def upsert_history_content(
     request: HistoryContentCreateRequest,
@@ -753,6 +836,136 @@ async def upsert_history_content(
     db.commit()
     db.refresh(history_content)
     return {"message": message, "content_id": history_content.id}
+
+
+@app.get("/api/teams/{team_id}/files", response_model=List[SharedFileResponse])
+async def get_shared_files(
+    team_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームに共有されたファイルの一覧を取得するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # ユーザーがチームのメンバーであることを確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="このチームのファイルリストを閲覧する権限がありません")
+
+    # チームに共有されたファイルを取得
+    shared_files = db.query(SharedFile, User.username).join(User, SharedFile.uploaded_by_user_id == User.id).filter(
+        SharedFile.team_id == team_id
+    ).order_by(SharedFile.uploaded_at.desc()).all()
+
+    # レスポンスモデルに合うようにデータを整形
+    files_data = []
+    for file, username in shared_files:
+        files_data.append(SharedFileResponse(
+            id=file.id,
+            filename=file.filename,
+            team_id=file.team_id,
+            uploaded_by_user_id=file.uploaded_by_user_id,
+            uploaded_by_username=username,
+            uploaded_at=file.uploaded_at
+        ))
+    return files_data
+
+
+@app.get("/api/files/{file_id}")
+async def download_shared_file(
+    file_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """共有ファイルをダウンロードするエンドポイント"""
+    shared_file = db.query(SharedFile).filter(SharedFile.id == file_id).first()
+    if not shared_file:
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+
+    # ユーザーがファイルが共有されているチームのメンバーであることを確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == shared_file.team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+
+    file_path = shared_file.filepath
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
+
+    return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
+
+
+@app.get("/api/teams/{team_id}/files", response_model=List[SharedFileResponse])
+async def get_shared_files(
+    team_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームに共有されたファイルの一覧を取得するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
+
+    # ユーザーがチームのメンバーであることを確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="このチームのファイルリストを閲覧する権限がありません")
+
+    # チームに共有されたファイルを取得
+    shared_files = db.query(SharedFile, User.username).join(User, SharedFile.uploaded_by_user_id == User.id).filter(
+        SharedFile.team_id == team_id
+    ).order_by(SharedFile.uploaded_at.desc()).all()
+
+    # レスポンスモデルに合うようにデータを整形
+    files_data = []
+    for file, username in shared_files:
+        files_data.append(SharedFileResponse(
+            id=file.id,
+            filename=file.filename,
+            team_id=file.team_id,
+            uploaded_by_user_id=file.uploaded_by_user_id,
+            uploaded_by_username=username,
+            uploaded_at=file.uploaded_at
+        ))
+    return files_data
+
+
+@app.get("/api/files/{file_id}")
+async def download_shared_file(
+    file_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """共有ファイルをダウンロードするエンドポイント"""
+    shared_file = db.query(SharedFile).filter(SharedFile.id == file_id).first()
+    if not shared_file:
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+
+    # ユーザーがファイルが共有されているチームのメンバーであることを確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == shared_file.team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+
+    file_path = shared_file.filepath
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
+
+    return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
 
 
 @app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Container, TextField, Button, List, ListItem, ListItemButton, ListItemText, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem as MuiMenuItem, FormControl, InputLabel } from '@mui/material';
+import { Box, Typography, Container, TextField, Button, List, ListItem, ListItemButton, ListItemText, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem as MuiMenuItem, FormControl, InputLabel, Tabs, Tab } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import DownloadIcon from '@mui/icons-material/Download';
 
 interface TeamManagementProps {
   showSnackbar: (message: string, severity: 'success' | 'error' | 'info' | 'warning') => void;
@@ -20,6 +21,15 @@ interface TeamMember {
   role: string;
 }
 
+interface SharedFile {
+  id: number;
+  filename: string;
+  team_id: number;
+  uploaded_by_user_id: number;
+  uploaded_by_username: string;
+  uploaded_at: string; // ISO 8601 string
+}
+
 const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [teamName, setTeamName] = useState<string>('');
   const [myTeams, setMyTeams] = useState<Team[]>([]);
@@ -29,6 +39,41 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [loadingMembers, setLoadingMembers] = useState<boolean>(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState<boolean>(false);
   const [memberUsernameToAdd, setMemberUsernameToAdd] = useState<string>('');
+  const [currentTab, setCurrentTab] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
+  const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
+
+  interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
+  }
+  
+  function TabPanel(props: TabPanelProps) {
+    const { children, value, index, ...other } = props;
+  
+    return (
+      <div
+        role="tabpanel"
+        hidden={value !== index}
+        id={`team-tabpanel-${index}`}
+        aria-labelledby={`team-tab-${index}`}
+        {...other}
+      >
+        {value === index && (
+          <Box sx={{ p: 3 }}>
+            {children}
+          </Box>
+        )}
+      </div>
+    );
+  }
+
+  const tabs = [
+    { label: 'チーム管理' },
+    { label: 'ファイル共有' },
+  ];
 
   const fetchMyTeams = async () => {
     setLoadingTeams(true);
@@ -94,6 +139,39 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   };
 
+  const fetchSharedFiles = async (teamId: number) => {
+    setLoadingSharedFiles(true);
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      setLoadingSharedFiles(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/files`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data: SharedFile[] = await response.json();
+        setSharedFiles(data);
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`共有ファイルの取得に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+        setSharedFiles([]);
+      }
+    } catch (error) {
+      console.error('Error fetching shared files:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+      setSharedFiles([]);
+    } finally {
+      setLoadingSharedFiles(false);
+    }
+  };
+
   useEffect(() => {
     fetchMyTeams();
   }, []);
@@ -101,8 +179,17 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   useEffect(() => {
     if (selectedTeam) {
       fetchTeamMembers(selectedTeam.id);
+      // selectedTeam が変更されたら、ファイルも取得
+      fetchSharedFiles(selectedTeam.id);
     }
   }, [selectedTeam]);
+
+  // currentTab が変更されたら、ファイル共有タブの場合にファイルを再取得
+  useEffect(() => {
+    if (selectedTeam && currentTab === 1) { // 1は「ファイル共有」タブのインデックス
+      fetchSharedFiles(selectedTeam.id);
+    }
+  }, [currentTab, selectedTeam]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {
@@ -137,6 +224,50 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       }
     } catch (error) {
       console.error('Error creating team:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
+      setSelectedFile(event.target.files[0]);
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedTeam || !selectedFile) {
+      showSnackbar('チームとファイルを選択してください。', 'warning');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/files`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        showSnackbar('ファイルが正常にアップロードされました！', 'success');
+        setSelectedFile(null); // ファイル選択をクリア
+        fetchSharedFiles(selectedTeam.id); // ファイルリストを更新
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`ファイルのアップロードに失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
       showSnackbar('ネットワークエラーが発生しました。', 'error');
     }
   };
@@ -247,7 +378,46 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   };
 
+  const handleFileDownload = async (fileId: number, filename: string) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        showSnackbar('ファイルをダウンロードしました！', 'success');
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`ファイルのダウンロードに失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  };
+
   const isCurrentUserAdmin = selectedTeam ? myTeams.find(t => t.id === selectedTeam.id)?.role === 'admin' : false;
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setCurrentTab(newValue);
+  };
 
   return (
     <Container maxWidth="md">
@@ -298,56 +468,124 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
         </Box>
 
         {selectedTeam && (
-          <Box sx={{ mt: 4, p: 3, border: '1px solid #ccc', borderRadius: '8px' }}>
-            <Typography variant="h5" component="h2" gutterBottom>
-              {selectedTeam.name} のメンバー
-            </Typography>
-            {isCurrentUserAdmin && (
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setAddMemberDialogOpen(true)}
-                sx={{ mb: 2 }}
-              >
-                メンバーを追加
-              </Button>
-            )}
-            {loadingMembers ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                <CircularProgress />
-              </Box>
-            ) : teamMembers.length === 0 ? (
-              <Typography variant="body1">このチームにはメンバーがいません。</Typography>
-            ) : (
-              <List>
-                {teamMembers.map((member) => (
-                  <ListItem key={member.user_id} divider>
-                    <ListItemText
-                      primary={member.username}
-                      secondary={`役割: ${member.role}`}
-                    />
-                    {isCurrentUserAdmin && (
-                      <Box>
-                        <FormControl variant="outlined" size="small" sx={{ minWidth: 120, mr: 1 }}>
-                          <InputLabel>役割</InputLabel>
-                          <Select
-                            value={member.role}
-                            onChange={(e) => handleChangeMemberRole(member.user_id, e.target.value as string)}
-                            label="役割"
-                          >
-                            <MuiMenuItem value="admin">管理者</MuiMenuItem>
-                            <MuiMenuItem value="member">メンバー</MuiMenuItem>
-                          </Select>
-                        </FormControl>
-                        <IconButton edge="end" aria-label="delete" onClick={() => handleRemoveMember(member.user_id)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </Box>
-                    )}
-                  </ListItem>
+          <Box sx={{ mt: 4, border: '1px solid #ccc', borderRadius: '8px' }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={currentTab} onChange={handleTabChange} aria-label="team management tabs">
+                {tabs.map((tab, index) => (
+                  <Tab label={tab.label} key={index} />
                 ))}
-              </List>
-            )}
+              </Tabs>
+            </Box>
+            <TabPanel value={currentTab} index={0}>
+              <Typography variant="h5" component="h2" gutterBottom>
+                {selectedTeam.name} のメンバー
+              </Typography>
+              {isCurrentUserAdmin && (
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => setAddMemberDialogOpen(true)}
+                  sx={{ mb: 2 }}
+                >
+                  メンバーを追加
+                </Button>
+              )}
+              {loadingMembers ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                  <CircularProgress />
+                </Box>
+              ) : teamMembers.length === 0 ? (
+                <Typography variant="body1">このチームにはメンバーがいません。</Typography>
+              ) : (
+                <List>
+                  {teamMembers.map((member) => (
+                    <ListItem key={member.user_id} divider>
+                      <ListItemText
+                        primary={member.username}
+                        secondary={`役割: ${member.role}`}
+                      />
+                      {isCurrentUserAdmin && (
+                        <Box>
+                          <FormControl variant="outlined" size="small" sx={{ minWidth: 120, mr: 1 }}>
+                            <InputLabel>役割</InputLabel>
+                            <Select
+                              value={member.role}
+                              onChange={(e) => handleChangeMemberRole(member.user_id, e.target.value as string)}
+                              label="役割"
+                            >
+                              <MuiMenuItem value="admin">管理者</MuiMenuItem>
+                              <MuiMenuItem value="member">メンバー</MuiMenuItem>
+                            </Select>
+                          </FormControl>
+                          <IconButton edge="end" aria-label="delete" onClick={() => handleRemoveMember(member.user_id)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                      )}
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </TabPanel>
+            <TabPanel value={currentTab} index={1}>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="h5" component="h2" gutterBottom>
+                  ファイルを共有
+                </Typography>
+                <input
+                  type="file"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                  id="file-upload-button"
+                />
+                <label htmlFor="file-upload-button">
+                  <Button variant="outlined" component="span">
+                    {selectedFile ? selectedFile.name : 'ファイルを選択'}
+                  </Button>
+                </label>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleFileUpload}
+                  disabled={!selectedFile}
+                  sx={{ ml: 2 }}
+                >
+                  アップロード
+                </Button>
+              </Box>
+
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h5" component="h2" gutterBottom>
+                  共有ファイル
+                </Typography>
+                {loadingSharedFiles ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : sharedFiles.length === 0 ? (
+                  <Typography variant="body1">共有ファイルはありません。</Typography>
+                ) : (
+                  <List>
+                    {sharedFiles.map((file) => (
+                      <ListItem
+                        key={file.id}
+                        secondaryAction={
+                          <IconButton edge="end" aria-label="download" onClick={() => handleFileDownload(file.id, file.filename)}>
+                            <DownloadIcon />
+                          </IconButton>
+                        }
+                        divider
+                      >
+                        <ListItemText
+                          primary={file.filename}
+                          secondary={`アップロード者: ${file.uploaded_by_username} (${new Date(file.uploaded_at).toLocaleDateString()})`}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Box>
+            </TabPanel>
           </Box>
         )}
 
