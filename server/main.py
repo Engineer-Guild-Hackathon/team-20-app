@@ -453,7 +453,7 @@ async def chat(request: ChatRequest):
 @app.post("/api/upload-pdf")
 async def upload_pdf(
     file: UploadFile = File(...), 
-    save_history: bool = Form(True), # 追加
+    save_history: str = Form("true"), # boolからstrに変更
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -493,7 +493,7 @@ async def upload_pdf(
         
         summary_id = None # 初期化
         # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
-        if current_user and save_history: # 条件追加
+        if current_user and save_history.lower() == 'true': # 文字列比較に変更
             new_history = SummaryHistory(
                 user_id=current_user.id,
                 filename=file.filename,

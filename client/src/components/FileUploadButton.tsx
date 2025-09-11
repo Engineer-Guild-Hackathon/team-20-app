@@ -38,8 +38,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = localStorage.getItem('access_token');
-    formData.append('save_history', token ? 'true' : 'false');
+    formData.append('save_history', 'false');
 
     try {
       // Note: We are not setting Content-Type header here.

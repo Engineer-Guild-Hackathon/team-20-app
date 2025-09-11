@@ -15,7 +15,7 @@ import {
 import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import PdfViewer from './components/PdfViewer';
-import AiAssistant from './components/AiAssistant';
+import AiAssistant, { Message } from './components/AiAssistant';
 import Workspace from './components/Workspace';
 import FileUploadButton from './components/FileUploadButton';
 import LoginModal from './components/LoginModal';
@@ -50,6 +50,7 @@ function App() {
   const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
   const [initialContents, setInitialContents] = useState<HistoryContent[] | undefined>(undefined);
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -77,7 +78,6 @@ function App() {
           if (response.ok) {
             const data: HistoryItem[] = await response.json();
             setSummaryHistories(data);
-            localStorage.removeItem('summary_histories');
           } else {
             console.error('Failed to fetch summary histories');
             setSummaryHistories([]);
@@ -86,9 +86,6 @@ function App() {
           console.error('Error fetching summary histories:', error);
           setSummaryHistories([]);
         }
-      } else {
-        const localHistories = localStorage.getItem('summary_histories');
-        setSummaryHistories(localHistories ? JSON.parse(localHistories) : []);
       }
     };
     fetchHistories();
@@ -124,7 +121,8 @@ function App() {
     setPdfSummary(summary);
     setPdfFilename(filename);
     setPdfSummaryId(summaryId);
-    setInitialContents(undefined); // 新しい要約なので、関連コンテンツはクリア
+    setInitialContents(undefined);
+    setChatMessages([]);
   };
 
   const handleHistoryClick = async (item: HistoryItem) => {
@@ -151,35 +149,63 @@ function App() {
     }
   };
 
+  const handleMessagesChange = (messages: Message[]) => {
+    setChatMessages(messages);
+  };
+
   const handleSaveSummary = async (summary: string, filename: string, teamId: number | null) => {
     if (!isLoggedIn) {
-        const newHistoryItem: HistoryItem = { filename, summary, created_at: new Date().toISOString() };
-        const updatedLocalHistories = [newHistoryItem, ...summaryHistories];
-        localStorage.setItem('summary_histories', JSON.stringify(updatedLocalHistories));
-        setSummaryHistories(updatedLocalHistories);
-        showSnackbar('要約をブラウザに保存しました！', 'success');
-        return;
+      showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
+      setIsLoginModalOpen(true);
+      return;
     }
     const token = localStorage.getItem('access_token');
+    if (!token) return;
+
     try {
-        const response = await fetch('http://localhost:8000/api/save-summary', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ filename, summary, team_id: teamId }),
+      // 1. 要約を保存して、新しいIDを取得
+      const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ filename, summary, team_id: teamId }),
+      });
+
+      if (!summaryResponse.ok) {
+        const errorData = await summaryResponse.json();
+        throw new Error(`要約の保存に失敗しました: ${errorData.detail || '不明なエラー'}`);
+      }
+
+      const summaryData = await summaryResponse.json();
+      const newSummaryId = summaryData.id;
+      setPdfSummaryId(newSummaryId);
+
+      // 2. チャット履歴を保存
+      if (chatMessages.length > 0) {
+        const chatResponse = await fetch('http://localhost:8000/api/history-contents', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            summary_history_id: newSummaryId,
+            section_type: 'ai_chat',
+            content: JSON.stringify(chatMessages),
+          }),
         });
-        if (response.ok) {
-            const data = await response.json();
-            showSnackbar('要約を保存しました！', 'success');
-            const newHistoryItem: HistoryItem = { id: data.id, filename, summary, created_at: new Date().toISOString() };
-            setSummaryHistories(prev => [newHistoryItem, ...prev]);
-            setPdfSummaryId(data.id);
-        } else {
-            const errorData = await response.json();
-            showSnackbar(`保存に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+
+        if (!chatResponse.ok) {
+          const errorData = await chatResponse.json();
+          throw new Error(`チャット履歴の保存に失敗しました: ${errorData.detail || '不明なエラー'}`);
         }
+      }
+
+      showSnackbar('要約とチャット履歴を保存しました！', 'success');
+      
+      // 履歴リストを更新
+      const newHistoryItem: HistoryItem = { id: newSummaryId, filename, summary, created_at: new Date().toISOString() };
+      setSummaryHistories(prev => [newHistoryItem, ...prev]);
+
     } catch (error) {
-        console.error('Error saving summary:', error);
-        showSnackbar('ネットワークエラーが発生しました。', 'error');
+        console.error('Error saving history:', error);
+        showSnackbar(error instanceof Error ? error.message : '保存中にエラーが発生しました。', 'error');
     }
   };
 
@@ -225,7 +251,11 @@ function App() {
                   <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} />
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <AiAssistant pdfSummaryContent={pdfSummary} summaryId={pdfSummaryId} initialContents={initialContents} />
+                  <AiAssistant 
+                    pdfSummaryContent={pdfSummary} 
+                    initialContents={initialContents} 
+                    onMessagesChange={handleMessagesChange} 
+                  />
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Workspace />
