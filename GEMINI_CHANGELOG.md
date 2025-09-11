@@ -1,3 +1,0 @@
-- `handleCreateTeam`関数に閉じ括弧を追加
-- `handleChangeMemberRole`関数に閉じ括弧を追加
-- `handleFileDownload`関数の後にある余分な閉じ括弧を削除
