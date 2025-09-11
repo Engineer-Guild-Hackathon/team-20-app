@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Typography, Container, TextField, Button, List, ListItem, ListItemButton, ListItemText, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem as MuiMenuItem, FormControl, InputLabel, Tabs, Tab } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
@@ -75,7 +75,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     { label: 'ファイル共有' },
   ];
 
-  const fetchMyTeams = async () => {
+  const fetchMyTeams = useCallback(async () => {
     setLoadingTeams(true);
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -104,9 +104,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     } finally {
       setLoadingTeams(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const fetchTeamMembers = async (teamId: number) => {
+  const fetchTeamMembers = useCallback(async (teamId: number) => {
     setLoadingMembers(true);
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -137,9 +137,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     } finally {
       setLoadingMembers(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const fetchSharedFiles = async (teamId: number) => {
+  const fetchSharedFiles = useCallback(async (teamId: number) => {
     setLoadingSharedFiles(true);
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -170,11 +170,11 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     } finally {
       setLoadingSharedFiles(false);
     }
-  };
+  }, [showSnackbar]);
 
   useEffect(() => {
     fetchMyTeams();
-  }, []);
+  }, [fetchMyTeams]);
 
   useEffect(() => {
     if (selectedTeam) {
@@ -182,14 +182,14 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       // selectedTeam が変更されたら、ファイルも取得
       fetchSharedFiles(selectedTeam.id);
     }
-  }, [selectedTeam]);
+  }, [selectedTeam, fetchTeamMembers, fetchSharedFiles]);
 
   // currentTab が変更されたら、ファイル共有タブの場合にファイルを再取得
   useEffect(() => {
     if (selectedTeam && currentTab === 1) { // 1は「ファイル共有」タブのインデックス
       fetchSharedFiles(selectedTeam.id);
     }
-  }, [currentTab, selectedTeam]);
+  }, [currentTab, selectedTeam, fetchSharedFiles]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {
