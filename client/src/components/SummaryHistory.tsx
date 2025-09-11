@@ -102,6 +102,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       if (response.ok) {
         const updatedHistory = { ...selectedHistory, tags: tagsArray };
         onUpdateHistory(updatedHistory);
+        setSelectedHistory(updatedHistory); // モーダル内の表示も即時更新
         setIsEditingTags(false);
       } else {
         console.error('Failed to update tags');
