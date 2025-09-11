@@ -184,6 +184,9 @@ class SaveSummaryRequest(BaseModel):
     summary: str
     team_id: Optional[int] = None # 追加
 
+class TagsUpdateRequest(BaseModel):
+    tags: List[str]
+
 class TeamCreateRequest(BaseModel):
     name: str
 
@@ -562,7 +565,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                 "created_at": summary.created_at,
                 "team_id": summary.team_id,
                 "username": username, # 自分の要約の作成者名
-                "team_name": team_name # チーム名を追加
+                "team_name": team_name, # チーム名を追加
+                "tags": summary.tags.split(',') if summary.tags else []
             })
 
         # ユーザーが所属するチームのIDを取得
@@ -590,7 +594,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                     "created_at": summary.created_at,
                     "team_id": summary.team_id,
                     "username": username, # 共有要約の作成者名
-                    "team_name": team_name # チーム名を追加
+                    "team_name": team_name, # チーム名を追加
+                    "tags": summary.tags.split(',') if summary.tags else []
                 })
 
         # 両方のリストを結合して返す
@@ -997,6 +1002,31 @@ async def get_summary_detail(
         raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
 
     return summary_history
+
+@app.put("/api/summaries/{summary_id}/tags")
+async def update_summary_tags(
+    summary_id: int,
+    request: TagsUpdateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """要約履歴のタグを更新するエンドポイント"""
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック：要約の所有者のみがタグを編集できる
+    if summary.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="この要約のタグを編集する権限がありません")
+
+    # タグリストをカンマ区切りの文字列に変換
+    tags_str = ",".join(request.tags)
+    summary.tags = tags_str
+    
+    db.commit()
+    db.refresh(summary)
+
+    return {"message": "タグが正常に更新されました", "summary_id": summary.id, "tags": request.tags}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

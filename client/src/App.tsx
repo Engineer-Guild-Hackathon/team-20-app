@@ -209,6 +209,14 @@ function App() {
     }
   };
 
+  const handleUpdateHistoryItem = (updatedItem: HistoryItem) => {
+    setSummaryHistories(prevHistories => 
+      prevHistories.map(item => 
+        item.id === updatedItem.id ? updatedItem : item
+      )
+    );
+  };
+
   return (
     <>
       <Box sx={{ flexGrow: 1 }}>
@@ -263,7 +271,7 @@ function App() {
               </Box>
             </Container>
           } />
-          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} />} />
+          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} />} />
           <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
         </Routes>
       </Box>

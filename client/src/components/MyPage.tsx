@@ -8,14 +8,19 @@ interface HistoryItem {
   filename: string;
   summary: string;
   created_at?: string;
+  team_id?: number;
+  username?: string;
+  team_name?: string;
+  tags?: string[];
 }
 
 interface MyPageProps {
   histories: HistoryItem[];
-  onHistoryClick: (item: HistoryItem) => void; // 追加
+  onHistoryClick: (item: HistoryItem) => void;
+  onUpdateHistory: (updatedItem: HistoryItem) => void;
 }
 
-const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick }) => { // onHistoryClickを追加
+const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick, onUpdateHistory }) => { // onHistoryClickを追加
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
@@ -26,7 +31,7 @@ const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick }) => { // on
         要約履歴
       </Typography>
       <Box sx={{ height: 'calc(100vh - 280px)' }}>
-        <SummaryHistory histories={histories} onHistoryClick={onHistoryClick} /> {/* onHistoryClickをそのまま渡す */}
+        <SummaryHistory histories={histories} onHistoryClick={onHistoryClick} onUpdateHistory={onUpdateHistory} /> {/* onHistoryClickをそのまま渡す */}
       </Box>
     </Container>
   );
