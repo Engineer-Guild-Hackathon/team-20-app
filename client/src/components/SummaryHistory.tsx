@@ -11,6 +11,12 @@ import {
   Chip,
   ToggleButton,
   ToggleButtonGroup,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 
@@ -32,6 +38,8 @@ interface SummaryHistoryProps {
 
 const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick }) => {
   const [filter, setFilter] = useState('all');
+  const [open, setOpen] = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
 
   const displayedHistories = histories.filter(item => {
     if (filter === 'personal') {
@@ -42,6 +50,16 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
     return true; // 'all'
   });
+
+  const handleHistoryItemClick = (item: HistoryItem) => {
+    setSelectedHistory(item);
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setSelectedHistory(null);
+  };
 
   return (
     <Paper
@@ -93,7 +111,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           <List disablePadding>
             {displayedHistories.map((item, index) => (
               <ListItem key={item.id || index} disablePadding>
-                <ListItemButton onClick={() => onHistoryClick(item)}>
+                <ListItemButton onClick={() => handleHistoryItemClick(item)}>
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -124,6 +142,28 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           </List>
         )}
       </Box>
+      {selectedHistory && (
+        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
+          <DialogTitle>{selectedHistory.filename}</DialogTitle>
+          <DialogContent>
+            <DialogContentText component="div" sx={{ whiteSpace: 'pre-wrap', mt: 2, maxHeight: '60vh', overflowY: 'auto' }}>
+              {selectedHistory.summary}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleClose}>閉じる</Button>
+            <Button
+              onClick={() => {
+                onHistoryClick(selectedHistory);
+                handleClose();
+              }}
+              variant="contained"
+            >
+              表示
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Paper>
   );
 };
