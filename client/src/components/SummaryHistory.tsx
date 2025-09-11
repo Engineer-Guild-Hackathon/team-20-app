@@ -185,7 +185,25 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                         )}
                       </Box>
                     }
-                    secondary={new Date(item.created_at || Date.now()).toLocaleString('ja-JP')}
+                    secondary={
+                      <>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flexGrow: 1 }}>
+                            {item.tags?.map((tag, index) => (
+                              <Chip key={index} label={tag} size="small" />
+                            ))}
+                          </Box>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ flexShrink: 0, ml: 1 }}
+                          >
+                            {new Date(item.created_at || Date.now()).toLocaleString('ja-JP')}
+                          </Typography>
+                        </Box>
+                      </>
+                    }
                   />
                 </ListItemButton>
               </ListItem>
