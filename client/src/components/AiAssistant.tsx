@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import TryIcon from '@mui/icons-material/Try'
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import TryIcon from '@mui/icons-material/Try';
 import {
   Paper,
   Typography,
@@ -10,27 +10,78 @@ import {
   CircularProgress,
   List,
   ListItem,
-  // ListItemText, // ListItemText is no longer needed
 } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 
+// 型定義
 interface Message {
   sender: 'user' | 'ai';
   text: string;
 }
 
-const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryContent }) => {
+interface HistoryContent {
+  id: number;
+  summary_history_id: number;
+  section_type: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AiAssistantProps {
+  pdfSummaryContent?: string;
+  summaryId?: number;
+  initialContents?: HistoryContent[];
+}
+
+const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId, initialContents }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // チャット履歴をサーバーに保存する関数
+  const saveChatHistory = useCallback(async (updatedMessages: Message[]) => {
+    if (!summaryId || updatedMessages.length === 0) {
+      return; // 保存対象のIDがない、またはメッセージが空なら何もしない
+    }
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.warn('チャット履歴を保存するにはログインが必要です。');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/history-contents', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          summary_history_id: summaryId,
+          section_type: 'ai_chat',
+          content: JSON.stringify(updatedMessages),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('チャット履歴の保存に失敗しました。');
+      }
+      console.log('チャット履歴が保存されました。');
+    } catch (error) {
+      console.error('Error saving chat history:', error);
+      // 必要であれば、ここでユーザーにエラー通知を表示する
+    }
+  }, [summaryId]);
 
   const handleSend = async (messageToSend?: string) => {
     const message = messageToSend || input;
     if (!message.trim()) return;
 
     const userMessage: Message = { sender: 'user', text: message };
-    setMessages((prev) => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
     setLoading(true);
 
@@ -49,7 +100,13 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
 
       const data = await response.json();
       const aiMessage: Message = { sender: 'ai', text: data.reply };
-      setMessages((prev) => [...prev, aiMessage]);
+      
+      const updatedMessages = [...newMessages, aiMessage];
+      setMessages(updatedMessages);
+      
+      // AIの応答を受け取った後に履歴を保存
+      await saveChatHistory(updatedMessages);
+
     } catch (error) {
       console.error('Error fetching AI response:', error);
       const errorMessage: Message = {
@@ -62,7 +119,30 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
     }
   };
 
-  // Scroll to bottom on new messages
+  // 初期コンテンツ（履歴）の読み込み
+  useEffect(() => {
+    const chatHistory = initialContents?.find(c => c.section_type === 'ai_chat');
+    if (chatHistory && chatHistory.content) {
+      try {
+        const parsedMessages = JSON.parse(chatHistory.content);
+        setMessages(parsedMessages);
+      } catch (e) {
+        console.error("Failed to parse chat history:", e);
+        setMessages([]);
+      }
+    } else {
+      setMessages([]); // 履歴がない場合はクリア
+    }
+  }, [initialContents]);
+
+  // 新しいPDFが読み込まれたらチャットをリセット
+  useEffect(() => {
+      if (!initialContents) {
+        setMessages([]);
+      }
+  }, [pdfSummaryContent, initialContents]);
+
+  // メッセージの追加時に一番下にスクロール
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
@@ -88,7 +168,7 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
       </Box>
       <Divider sx={{ mb: 2 }} />
 
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}> {/* Add ref here */}
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}>
         <List>
           {messages.map((msg, index) => (
             <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -118,19 +198,13 @@ const AiAssistant: React.FC<{ pdfSummaryContent?: string }> = ({ pdfSummaryConte
         </List>
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
-        <Button variant="outlined" onClick={() => handleSend(
-          '要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．'
-          )}>
+        <Button variant="outlined" onClick={() => handleSend('要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．')}>
           コード生成
         </Button>
-        <Button variant="outlined" onClick={() => handleSend(
-          '用語を解説してください'
-          )}>
+        <Button variant="outlined" onClick={() => handleSend('用語を解説してください')}>
           用語解説
         </Button>
-        <Button variant="outlined" onClick={() => handleSend(
-          '要約内容が正しいか検索してください'
-          )}>
+        <Button variant="outlined" onClick={() => handleSend('要約内容が正しいか検索してください')}>
           要約内容チェック
         </Button>
       </Box>
