@@ -19,6 +19,7 @@ class User(Base):
     teams = relationship("TeamMember", back_populates="user")
     summaries = relationship("SummaryHistory", back_populates="user")
     comments = relationship("Comment", back_populates="user")
+    uploaded_files = relationship("SharedFile", back_populates="uploaded_by_user")
 
 class Team(Base):
     __tablename__ = "teams"
@@ -30,6 +31,7 @@ class Team(Base):
 
     members = relationship("TeamMember", back_populates="team")
     summaries = relationship("SummaryHistory", back_populates="team")
+    shared_files = relationship("SharedFile", back_populates="team")
 
 class TeamMember(Base):
     __tablename__ = "team_members"
@@ -80,3 +82,16 @@ class HistoryContent(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     summary_history = relationship("SummaryHistory", back_populates="contents")
+
+class SharedFile(Base):
+    __tablename__ = "shared_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    filepath = Column(String, unique=True, nullable=False) # サーバー上の保存パス
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    uploaded_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    team = relationship("Team", back_populates="shared_files")
+    uploaded_by_user = relationship("User", back_populates="uploaded_files")
