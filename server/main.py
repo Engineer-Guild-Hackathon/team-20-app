@@ -13,7 +13,7 @@ import base64
 from sqlalchemy.orm import Session, joinedload
 from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 import uuid
 from fastapi.responses import FileResponse
@@ -521,7 +521,8 @@ async def upload_pdf(
             new_history = SummaryHistory(
                 user_id=current_user.id,
                 filename=file.filename,
-                summary=summary
+                summary=summary,
+                created_at=datetime.now(timezone.utc)
             )
             db.add(new_history)
             db.commit()
@@ -719,7 +720,8 @@ async def save_summary(
             user_id=current_user.id,
             filename=request.filename,
             summary=request.summary,
-            team_id=request.team_id # team_idを追加
+            team_id=request.team_id,
+            created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
         )
         db.add(new_history)
         db.commit()
