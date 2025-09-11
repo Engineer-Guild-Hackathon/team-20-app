@@ -53,10 +53,6 @@ async def log_requests(request: Request, call_next):
     
     process_time = time.time() - start_time
     
-    logging.info(
-        f"ip={request.client.host} method={request.method} path={request.url.path} "
-        f"status_code={response.status_code} process_time={process_time:.4f}s"
-    )
     
     return response
 
@@ -527,15 +523,6 @@ async def upload_pdf(
             # 要約からタグ部分を削除
             summary = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
         
-        logging.info(f"Extracted tags: {generated_tags}") # 追加
-        logging.info(f"Final summary (after tag removal): {summary}")
-        
-        tags_to_save = ",".join(generated_tags) if generated_tags else None
-        logging.info(f"Tags to save to DB: {tags_to_save}") # 追加
-            
-        
-        
-
         return {
             "filename": file.filename,
             "summary": summary,
@@ -579,7 +566,6 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         # ユーザーが所属するチームのIDを取得
         user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
 
-        logging.info(f"User {current_user.username} is a member of teams: {user_team_ids}")
 
         # 所属チームに共有された要約を取得
         shared_summaries_data = []
@@ -590,10 +576,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
             ).order_by(SummaryHistory.created_at.desc())
             
             shared_summaries_results = shared_summaries_query.all()
-            logging.info(f"Found {len(shared_summaries_results)} shared summaries for user {current_user.username}")
 
             for summary, username, team_name in shared_summaries_results:
-                logging.info(f"Adding shared summary: filename={summary.filename}, username={username}, team_name={team_name}")
                 shared_summaries_data.append({
                     "id": summary.id,
                     "filename": summary.filename,
@@ -733,7 +717,6 @@ async def save_summary(
         db.add(new_history)
         db.commit()
         db.refresh(new_history)
-        logging.info(f"Summary saved via /api/save-summary for user: {current_user.username}")
         return {"message": "要約が正常に保存されました", "id": new_history.id}
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
@@ -1036,6 +1019,11 @@ async def update_summary_tags(
     db.refresh(summary)
 
     return {"message": "タグが正常に更新されました", "summary_id": summary.id, "tags": request.tags}
+
+@app.get("/api/users/me")
+async def read_users_me(current_user: User = Depends(get_required_user)):
+    """現在のユーザー情報を取得するエンドポイント"""
+    return {"username": current_user.username, "id": current_user.id}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

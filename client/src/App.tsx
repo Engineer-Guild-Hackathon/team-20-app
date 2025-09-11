@@ -58,6 +58,7 @@ function App() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [username, setUsername] = useState<string | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -67,6 +68,37 @@ function App() {
     const token = localStorage.getItem('access_token');
     setIsLoggedIn(!!token);
   }, []);
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setUsername(null);
+        return;
+      }
+      try {
+        const response = await fetch('http://localhost:8000/api/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUsername(data.username);
+        } else {
+          console.error('Failed to fetch user info');
+          setUsername(null);
+        }
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+        setUsername(null);
+      }
+    };
+
+    if (isLoggedIn) {
+      fetchUserInfo();
+    } else {
+      setUsername(null); // ログアウト時はユーザー名をクリア
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const fetchHistories = async () => {
@@ -156,16 +188,39 @@ function App() {
     setChatMessages(messages);
   };
 
-  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, tags?: string[] | null) => {
-    console.log("handleSaveSummary called"); // 追加
+  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null) => {
     if (!isLoggedIn) {
       showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);
       return;
     }
     const token = localStorage.getItem('access_token');
-    console.log("Token in handleSaveSummary:", token); // 追加
     if (!token) return;
+
+    let currentUsername = usernameFromProps; // PdfViewerから渡されたusernameを優先
+
+    // usernameFromPropsがnullまたはundefinedの場合、Appのusernameステートを使用
+    if (currentUsername === null || currentUsername === undefined) {
+      currentUsername = username;
+    }
+
+    // まだusernameがnullの場合、APIから取得を試みる
+    if (currentUsername === null) {
+      try {
+        const response = await fetch('http://localhost:8000/api/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          currentUsername = data.username;
+          setUsername(data.username); // Appのステートも更新
+        } else {
+          console.error('Failed to fetch user info in handleSaveSummary');
+        }
+      } catch (error) {
+        console.error('Error fetching user info in handleSaveSummary:', error);
+      }
+    }
 
     try {
       // 1. 要約を保存して、新しいIDを取得
@@ -177,7 +232,7 @@ function App() {
 
       if (!summaryResponse.ok) {
         const errorData = await summaryResponse.json();
-        console.error("Error saving summary:", errorData); // 追加
+        console.error("Error saving summary:", errorData);
         throw new Error(`要約の保存に失敗しました: ${errorData.detail || '不明なエラー'}`);
       }
 
@@ -206,7 +261,16 @@ function App() {
       showSnackbar('要約とチャット履歴を保存しました！', 'success');
       
       // 履歴リストを更新
-      const newHistoryItem: HistoryItem = { id: newSummaryId, filename, summary, created_at: new Date().toISOString(), tags: tags || [] };
+      const newHistoryItem: HistoryItem = { 
+        id: newSummaryId, 
+        filename, 
+        summary, 
+        created_at: new Date().toISOString(), 
+        tags: tags || [],
+        team_id: teamId || undefined,
+        team_name: teamName || undefined,
+        username: currentUsername || undefined // ここを修正
+      };
       setSummaryHistories(prev => [newHistoryItem, ...prev]);
 
     } catch (error) {
@@ -262,7 +326,7 @@ function App() {
             <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
               <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                 <Box sx={{ flex: 1 }}>
-                  <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} tags={pdfTags} />
+                  <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} tags={pdfTags} username={username} />
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <AiAssistant 

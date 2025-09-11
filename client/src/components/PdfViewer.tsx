@@ -8,7 +8,8 @@ interface PdfViewerProps {
   filename?: string;
   summaryId?: number; // 追加
   tags?: string[] | null; // 追加
-  onSave: (summary: string, filename: string, teamId: number | null, tags?: string[] | null) => Promise<void>; // 戻り値をPromise<void>に変更
+  username?: string | null;
+  onSave: (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, username?: string | null) => Promise<void>; // 戻り値をPromise<void>に変更
 }
 
 interface Team {
@@ -25,9 +26,9 @@ interface Comment {
   created_at: string;
 }
 
-const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tags, onSave }) => {
+const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tags, onSave, username }) => {
   const [myTeams, setMyTeams] = useState<Team[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('');
+  const [selectedTeamId, setSelectedTeamId] = useState<number | '' | '個人用'>('');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newCommentContent, setNewCommentContent] = useState<string>('');
@@ -102,7 +103,14 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
   }, [summaryId, isLoggedIn]);
 
   const handleSaveClick = () => {
-    onSave(summary || '', filename || '', selectedTeamId === '' ? null : Number(selectedTeamId), tags);
+    let teamName: string | null = null;
+    if (selectedTeamId !== '' && selectedTeamId !== '個人用') { // '個人用'はチームではないので除外
+      const selectedTeam = myTeams.find(team => team.id === Number(selectedTeamId));
+      if (selectedTeam) {
+        teamName = selectedTeam.name;
+      }
+    }
+    onSave(summary || '', filename || '', selectedTeamId === '' ? null : Number(selectedTeamId), teamName, tags, username);
   };
 
   const handleAddComment = async () => {
