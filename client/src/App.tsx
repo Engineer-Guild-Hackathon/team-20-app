@@ -12,6 +12,7 @@ import {
   Snackbar,
   Alert
 } from '@mui/material';
+import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import PdfViewer from './components/PdfViewer';
 import AiAssistant from './components/AiAssistant';
@@ -210,7 +211,8 @@ function App() {
               <Container maxWidth="xl">
                 <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
                   <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
-                    <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <Link to="/" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center' }}>
+                      {location.pathname !== '/' && <HomeIcon sx={{ mr: 1 }} />}
                       CogniStudy
                     </Link>
                   </Typography>
