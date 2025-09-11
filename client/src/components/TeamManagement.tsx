@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Typography, Container, TextField, Button, List, ListItem, ListItemButton, ListItemText, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Select, MenuItem as MuiMenuItem, FormControl, InputLabel } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import DownloadIcon from '@mui/icons-material/Download';
 
 interface TeamManagementProps {
   showSnackbar: (message: string, severity: 'success' | 'error' | 'info' | 'warning') => void;
@@ -20,6 +22,14 @@ interface TeamMember {
   role: string;
 }
 
+interface TeamFile {
+  id: number;
+  filename: string;
+  filesize: number;
+  created_at: string;
+  uploaded_by: string;
+}
+
 const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [teamName, setTeamName] = useState<string>('');
   const [myTeams, setMyTeams] = useState<Team[]>([]);
@@ -27,8 +37,12 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState<boolean>(false);
+  const [teamFiles, setTeamFiles] = useState<TeamFile[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState<boolean>(false);
   const [memberUsernameToAdd, setMemberUsernameToAdd] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   const fetchMyTeams = async () => {
     setLoadingTeams(true);
@@ -101,8 +115,154 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   useEffect(() => {
     if (selectedTeam) {
       fetchTeamMembers(selectedTeam.id);
+      fetchTeamFiles(selectedTeam.id);
     }
   }, [selectedTeam]);
+
+  const fetchTeamFiles = async (teamId: number) => {
+    setLoadingFiles(true);
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      setLoadingFiles(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/files`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data: TeamFile[] = await response.json();
+        setTeamFiles(data);
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`ファイル一覧の取得に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+        setTeamFiles([]);
+      }
+    } catch (error) {
+      console.error('Error fetching team files:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+      setTeamFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && selectedTeam) {
+      handleFileUpload(file, selectedTeam.id);
+    }
+    // Reset the input value to allow re-uploading the same file
+    event.target.value = '';
+  };
+
+  const handleFileUpload = async (file: File, teamId: number) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/files`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        showSnackbar('ファイルが正常にアップロードされました', 'success');
+        fetchTeamFiles(teamId); // Refresh the file list
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`ファイルのアップロードに失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  };
+
+  const handleFileDownload = async (fileId: number, filename: string) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`ファイルのダウンロードに失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  };
+
+  const handleFileDelete = async (fileId: number) => {
+    if (!selectedTeam) return;
+    if (!window.confirm('本当にこのファイルを削除しますか？元に戻すことはできません。')) {
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        showSnackbar('ファイルを削除しました', 'success');
+        fetchTeamFiles(selectedTeam.id); // Refresh the file list
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`ファイルの削除に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  };
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {
@@ -346,6 +506,70 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                     )}
                   </ListItem>
                 ))}
+              </List>
+            )}
+          </Box>
+        )}
+
+        {selectedTeam && (
+          <Box sx={{ mt: 4, p: 3, border: '1px solid #ccc', borderRadius: '8px' }}>
+            <Typography variant="h5" component="h2" gutterBottom>
+              {selectedTeam.name} の共有ファイル
+            </Typography>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileSelected}
+            />
+            <Button
+              variant="contained"
+              startIcon={<CloudUploadIcon />}
+              onClick={handleUploadClick}
+              sx={{ mb: 2 }}
+            >
+              ファイルをアップロード
+            </Button>
+            {loadingFiles ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <CircularProgress />
+              </Box>
+            ) : teamFiles.length === 0 ? (
+              <Typography variant="body1">共有されているファイルはありません。</Typography>
+            ) : (
+              <List>
+                {teamFiles.map((file) => {
+                  const token = localStorage.getItem('access_token');
+                  let currentUsername = '';
+                  if (token) {
+                    try {
+                      const payload = JSON.parse(atob(token.split('.')[1]));
+                      currentUsername = payload.sub; // Assuming username is in 'sub' claim
+                    } catch (e) {
+                      console.error('Failed to decode token', e);
+                    }
+                  }
+
+                  const isUploader = file.uploaded_by === currentUsername;
+                  const canDelete = isCurrentUserAdmin || isUploader;
+
+                  return (
+                    <ListItem key={file.id} divider>
+                      <ListItemText
+                        primary={file.filename}
+                        secondary={`アップロード者: ${file.uploaded_by} | サイズ: ${(file.filesize / 1024).toFixed(2)} KB | 日時: ${new Date(file.created_at).toLocaleString()}`}
+                      />
+                      <IconButton edge="end" aria-label="download" onClick={() => handleFileDownload(file.id, file.filename)}>
+                        <DownloadIcon />
+                      </IconButton>
+                      {canDelete && (
+                        <IconButton edge="end" aria-label="delete" onClick={() => handleFileDelete(file.id)}>
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
+                    </ListItem>
+                  );
+                })}
               </List>
             )}
           </Box>

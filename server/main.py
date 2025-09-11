@@ -1,6 +1,9 @@
 import logging
 import time
+import shutil
+import uuid
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status, Header, Form
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -11,10 +14,14 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session
-from .database import Base, engine, SessionLocal, User, SummaryHistory
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, TeamFile
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
+
+# アップロードディレクトリの設定
+UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -638,6 +645,157 @@ async def get_my_teams(current_user: User = Depends(get_required_user), db: Sess
                 "created_by_user_id": team.created_by_user_id
             })
     return teams_data
+
+@app.post("/api/teams/{team_id}/files")
+async def upload_file_to_team(
+    team_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームにファイルをアップロードするエンドポイント"""
+    # チームの存在とメンバーシップの確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="あなたはこのチームのメンバーではないため、ファイルをアップロードできません")
+
+    try:
+        # 安全なファイル名を生成
+        original_filename = file.filename
+        _, file_extension = os.path.splitext(original_filename)
+        safe_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(UPLOAD_DIRECTORY, safe_filename)
+
+        # ファイルを保存
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # ファイルサイズを取得
+        file_size = os.path.getsize(file_path)
+
+        # データベースにファイル情報を保存
+        new_file = TeamFile(
+            team_id=team_id,
+            user_id=current_user.id,
+            filename=original_filename,
+            filepath=file_path,
+            filesize=file_size
+        )
+        db.add(new_file)
+        db.commit()
+        db.refresh(new_file)
+
+        return {
+            "message": "ファイルが正常にアップロードされました",
+            "file_id": new_file.id,
+            "filename": new_file.filename,
+            "filesize": new_file.filesize
+        }
+    except Exception as e:
+        logging.error(f"チームへのファイルアップロード中にエラーが発生しました: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="ファイルのアップロード中に内部サーバーエラーが発生しました")
+
+@app.get("/api/teams/{team_id}/files")
+async def get_team_files(
+    team_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームのファイル一覧を取得するエンドポイント"""
+    # チームの存在とメンバーシップの確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="あなたはこのチームのメンバーではないため、ファイル一覧を取得できません")
+
+    # チームのファイルとアップロードしたユーザーの情報を取得
+    team_files = db.query(TeamFile, User.username).join(User, TeamFile.user_id == User.id).filter(
+        TeamFile.team_id == team_id
+    ).order_by(TeamFile.created_at.desc()).all()
+
+    files_data = [
+        {
+            "id": file.id,
+            "filename": file.filename,
+            "filesize": file.filesize,
+            "created_at": file.created_at,
+            "uploaded_by": username
+        }
+        for file, username in team_files
+    ]
+
+    return files_data
+
+@app.get("/api/files/{file_id}")
+async def download_team_file(
+    file_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームファイルをダウンロードするエンドポイント"""
+    # ファイルの存在確認
+    team_file = db.query(TeamFile).filter(TeamFile.id == file_id).first()
+    if not team_file:
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+
+    # ユーザーがそのチームのメンバーであるか確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_file.team_id
+    ).first()
+    if not team_membership:
+        raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+
+    # ファイルパスの安全性を確認
+    if not os.path.exists(team_file.filepath) or not os.path.isfile(team_file.filepath):
+        raise HTTPException(status_code=404, detail="サーバー上でファイルが見つかりません")
+
+    return FileResponse(path=team_file.filepath, filename=team_file.filename)
+
+@app.delete("/api/files/{file_id}")
+async def delete_team_file(
+    file_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """チームファイルを削除するエンドポイント"""
+    # ファイルの存在確認
+    team_file = db.query(TeamFile).filter(TeamFile.id == file_id).first()
+    if not team_file:
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+
+    # ユーザーがそのチームの管理者であるか、または自分がアップロードしたファイルであるか確認
+    team_membership = db.query(TeamMember).filter(
+        TeamMember.user_id == current_user.id,
+        TeamMember.team_id == team_file.team_id
+    ).first()
+
+    is_admin = team_membership and team_membership.role == 'admin'
+    is_uploader = team_file.user_id == current_user.id
+
+    if not (is_admin or is_uploader):
+        raise HTTPException(status_code=403, detail="このファイルを削除する権限がありません")
+
+    try:
+        # サーバーからファイルを削除
+        if os.path.exists(team_file.filepath):
+            os.remove(team_file.filepath)
+
+        # データベースからレコードを削除
+        db.delete(team_file)
+        db.commit()
+
+        return {"message": "ファイルが正常に削除されました"}
+    except Exception as e:
+        logging.error(f"チームファイルの削除中にエラーが発生しました: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="ファイルの削除中に内部サーバーエラーが発生しました")
+
 
 @app.post("/api/save-summary")
 async def save_summary(
