@@ -38,16 +38,23 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     const formData = new FormData();
     formData.append('file', file);
 
-    formData.append('save_history', 'false');
+    
 
     try {
-      // Note: We are not setting Content-Type header here.
-      // The browser will automatically set it to multipart/form-data
-      // and include the boundary, which is required for FormData.
+      const token = localStorage.getItem('access_token'); // トークンを取得
+      if (!token) { // トークンがない場合はエラー
+        setError('ログインしていません。');
+        setShowError(true);
+        setIsUploading(false);
+        return;
+      }
+
       const response = await fetch('http://localhost:8000/api/upload-pdf', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         body: formData,
-        // Authorization header is not needed for this endpoint as it's handled by get_current_user
       });
 
       if (!response.ok) {

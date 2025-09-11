@@ -157,12 +157,14 @@ function App() {
   };
 
   const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, tags?: string[] | null) => {
+    console.log("handleSaveSummary called"); // 追加
     if (!isLoggedIn) {
       showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);
       return;
     }
     const token = localStorage.getItem('access_token');
+    console.log("Token in handleSaveSummary:", token); // 追加
     if (!token) return;
 
     try {
@@ -175,6 +177,7 @@ function App() {
 
       if (!summaryResponse.ok) {
         const errorData = await summaryResponse.json();
+        console.error("Error saving summary:", errorData); // 追加
         throw new Error(`要約の保存に失敗しました: ${errorData.detail || '不明なエラー'}`);
       }
 

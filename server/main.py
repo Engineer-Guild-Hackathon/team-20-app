@@ -184,6 +184,7 @@ class SaveSummaryRequest(BaseModel):
     filename: str
     summary: str
     team_id: Optional[int] = None # 追加
+    tags: Optional[List[str]] = None # 追加
 
 class TagsUpdateRequest(BaseModel):
     tags: List[str]
@@ -478,7 +479,6 @@ async def chat(request: ChatRequest):
 @app.post("/api/upload-pdf")
 async def upload_pdf(
     file: UploadFile = File(...), 
-    save_history: str = Form("true"), # boolからstrに変更
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -500,7 +500,7 @@ async def upload_pdf(
             contents=[
                 {
                     'parts': [
-                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。また要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。'},
+                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。タグが生成できない場合でも、必ず `[タグ: なし]` と記述してください。'},
                         {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
                     ]
                 }
@@ -526,28 +526,20 @@ async def upload_pdf(
             generated_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
             # 要約からタグ部分を削除
             summary = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
+        
+        logging.info(f"Extracted tags: {generated_tags}") # 追加
+        logging.info(f"Final summary (after tag removal): {summary}")
+        
+        tags_to_save = ",".join(generated_tags) if generated_tags else None
+        logging.info(f"Tags to save to DB: {tags_to_save}") # 追加
             
-        summary_id = None # 初期化
-        # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
-        if current_user and save_history.lower() == 'true': # 文字列比較に変更
-            new_history = SummaryHistory(
-                user_id=current_user.id,
-                filename=file.filename,
-                summary=summary,
-                tags=",".join(generated_tags) if generated_tags else None, # タグを保存
-                created_at=datetime.now(timezone.utc)
-            )
-            db.add(new_history)
-            db.commit()
-            db.refresh(new_history) # idを取得するためにrefresh
-            summary_id = new_history.id # idをセット
-            logging.info(f"Summary history saved for user: {current_user.username} with ID: {summary_id}")
+        
+        
 
         return {
             "filename": file.filename,
             "summary": summary,
             "status": "success",
-            "summary_id": summary_id, # レスポンスに追加
             "tags": generated_tags # 生成されたタグをレスポンスに追加
         }
         
@@ -735,6 +727,7 @@ async def save_summary(
             filename=request.filename,
             summary=request.summary,
             team_id=request.team_id,
+            tags=",".join(request.tags) if request.tags else None, # tagsを追加
             created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
         )
         db.add(new_history)
