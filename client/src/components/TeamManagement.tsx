@@ -196,7 +196,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/messages`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/teams/${teamId}/messages`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -475,7 +475,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/messages`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/teams/${selectedTeam.id}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

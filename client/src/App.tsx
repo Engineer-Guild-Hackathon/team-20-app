@@ -77,7 +77,7 @@ function App() {
         return;
       }
       try {
-        const response = await fetch('http://localhost:8000/api/users/me', {
+        const response = await fetch('${process.env.REACT_APP_API_URL}/api/users/me', {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -105,7 +105,7 @@ function App() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       try {
-        const response = await fetch('http://localhost:8000/api/summaries', {
+        const response = await fetch('${process.env.REACT_APP_API_URL}/api/summaries', {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -169,7 +169,7 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${item.id}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/summaries/${item.id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('履歴詳細の読み込みに失敗しました。');
@@ -208,7 +208,7 @@ function App() {
     // まだusernameがnullの場合、APIから取得を試みる
     if (currentUsername === null) {
       try {
-        const response = await fetch('http://localhost:8000/api/users/me', {
+        const response = await fetch('${process.env.REACT_APP_API_URL}/api/users/me', {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -225,7 +225,7 @@ function App() {
 
     try {
       // 1. 要約を保存して、新しいIDを取得
-      const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
+      const summaryResponse = await fetch('${process.env.REACT_APP_API_URL}/api/save-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ filename, summary, team_id: teamId, tags: tags }),
@@ -243,7 +243,7 @@ function App() {
 
       // 2. チャット履歴を保存
       if (chatMessages.length > 0) {
-        const chatResponse = await fetch('http://localhost:8000/api/history-contents', {
+        const chatResponse = await fetch('${process.env.REACT_APP_API_URL}/api/history-contents', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
