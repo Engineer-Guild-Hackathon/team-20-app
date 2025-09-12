@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message, init_db
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = FastAPI(title="Team 20 API", version="1.0.0")
 
 # データベーステーブルを作成
-Base.metadata.create_all(bind=engine)
+init_db()
 
 # CORS設定 - フロントエンドからのアクセスを許可
 app.add_middleware(
