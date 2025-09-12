@@ -50,6 +50,7 @@ function App() {
   const [pdfFilename, setPdfFilename] = useState<string>('');
   const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
   const [pdfTags, setPdfTags] = useState<string[]>([]); // 追加
+  const [pdfFilePath, setPdfFilePath] = useState<string>(''); // PDFファイルパス追加
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
   const [initialContents, setInitialContents] = useState<HistoryContent[] | undefined>(undefined);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
@@ -152,11 +153,12 @@ function App() {
     setSnackbarOpen(false);
   };
 
-  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[]) => {
+  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
     setPdfSummaryId(summaryId);
     setPdfTags(tags || []); // 追加
+    setPdfFilePath(filePath || ''); // ファイルパス追加
     setInitialContents(undefined);
     setChatMessages([]);
   };
@@ -228,7 +230,7 @@ function App() {
       const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ filename, summary, team_id: teamId, tags: tags }),
+          body: JSON.stringify({ filename, summary, team_id: teamId, tags: tags, original_file_path: pdfFilePath }),
       });
 
       if (!summaryResponse.ok) {
@@ -332,6 +334,7 @@ function App() {
                 <Box sx={{ flex: 1 }}>
                   <AiAssistant 
                     pdfSummaryContent={pdfSummary} 
+                    summaryId={pdfSummaryId}
                     initialContents={initialContents} 
                     onMessagesChange={handleMessagesChange} 
                   />

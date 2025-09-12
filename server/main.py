@@ -12,6 +12,7 @@ from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
 from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -34,6 +35,18 @@ app = FastAPI(title="Team 20 API", version="1.0.0")
 
 # データベーステーブルを作成
 Base.metadata.create_all(bind=engine)
+
+# 既存DBの不足カラムを補完（SQLite向け簡易マイグレーション）
+try:
+    inspector = inspect(engine)
+    columns = [c['name'] for c in inspector.get_columns('summary_histories')]
+    if 'original_file_path' not in columns:
+        logging.info("Adding missing column 'original_file_path' to summary_histories table")
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN original_file_path STRING"))
+            conn.commit()
+except Exception as e:
+    logging.warning(f"Failed to ensure DB schema for summary_histories: {e}")
 
 # CORS設定 - フロントエンドからのアクセスを許可
 app.add_middleware(
@@ -161,6 +174,7 @@ def get_required_user(authorization: str = Header(...), db: Session = Depends(ge
 class ChatRequest(BaseModel):
     message: str
     pdf_summary: Optional[str] = None
+    summary_id: Optional[int] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -176,6 +190,7 @@ class SaveSummaryRequest(BaseModel):
     summary: str
     team_id: Optional[int] = None # 追加
     tags: Optional[List[str]] = None # 追加
+    original_file_path: Optional[str] = None # PDFファイルパス
 
 class TagsUpdateRequest(BaseModel):
     tags: List[str]
@@ -501,21 +516,55 @@ async def health_check():
     return {"status": "healthy", "message": "サーバーは正常に動作しています"}
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """チャットエンドポイント"""
 
     client = genai.Client(api_key=API_KEY)
     try:
+        # summary_idが指定されていて、PDFファイルが存在する場合は直接参照
+        if request.summary_id:
+            summary = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_id).first()
+            if summary and summary.original_file_path and os.path.exists(summary.original_file_path):
+                try:
+                    # PDFファイルを読み込んでBase64エンコード
+                    with open(summary.original_file_path, 'rb') as f:
+                        file_content = f.read()
+                    base64_content = base64.b64encode(file_content).decode('utf-8')
+                    
+                    logging.info(f"Using PDF file directly: {summary.original_file_path}")
+                    
+                    # PDFファイルと要約の両方を参照
+                    response = client.models.generate_content(
+                        model='gemini-2.0-flash-001',
+                        contents=[
+                            {
+                                'parts': [
+                                    {'text': f"このPDFファイルの内容と以下の要約を参考に質問に答えてください。より詳細な情報が必要な場合はPDFファイルの内容を優先してください。\n\n要約:\n{request.pdf_summary or summary.summary}\n\n質問:\n{request.message}"},
+                                    {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
+                                ]
+                            }
+                        ]
+                    )
+                    
+                    if hasattr(response, 'text') and response.text:
+                        return {"reply": response.text}
+                    elif hasattr(response, 'candidates') and response.candidates:
+                        return {"reply": response.candidates[0].content.parts[0].text}
+                
+                except Exception as pdf_error:
+                    logging.error(f"Error processing PDF file: {str(pdf_error)}")
+                    # PDFファイルの読み込みに失敗した場合は要約のみで処理
+        
+        # 従来の要約のみの処理
         full_content = request.message
         if request.pdf_summary:
             full_content = f"以下のPDF要約を考慮して質問に答えてください。\n\nPDF要約:\n{request.pdf_summary}\n\n質問:\n{request.message}"
 
-        # 新しいモデル名に変更
         response = client.models.generate_content(
             model='gemini-2.0-flash-001', contents=full_content
         )
         
-        logging.info(f"Generated response: {response.text}")
+        logging.info(f"Generated response using summary only")
         
         if not response or not response.text:
             return {"reply": "応答なし！"}
@@ -523,7 +572,6 @@ async def chat(request: ChatRequest):
         return {"reply": response.text}
     except Exception as e:
         logging.error(f"Error in chat endpoint: {str(e)}")
-        # エラーハンドリングを有効化
         raise HTTPException(status_code=500, detail=f"AI応答エラー: {str(e)}")
 
 
@@ -542,6 +590,15 @@ async def upload_pdf(
         
         file_content = await file.read()
         base64_content = base64.b64encode(file_content).decode('utf-8')
+        
+        # PDFファイルを保存（チャット時に参照するため）
+        unique_filename = f"{uuid.uuid4()}_{file.filename}"
+        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+        
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        
+        logging.info(f"PDF file saved to: {file_path}")
         
         client = genai.Client(api_key=API_KEY)
         
@@ -581,7 +638,8 @@ async def upload_pdf(
             "filename": file.filename,
             "summary": summary,
             "status": "success",
-            "tags": generated_tags # 生成されたタグをレスポンスに追加
+            "tags": generated_tags, # 生成されたタグをレスポンスに追加
+            "file_path": file_path  # PDFファイルパスを追加
         }
         
     except HTTPException:
@@ -880,6 +938,7 @@ async def save_summary(
             summary=request.summary,
             team_id=request.team_id,
             tags=",".join(request.tags) if request.tags else None, # tagsを追加
+            original_file_path=request.original_file_path, # PDFファイルパスを追加
             created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
         )
         db.add(new_history)

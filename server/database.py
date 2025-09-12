@@ -81,6 +81,7 @@ class SummaryHistory(Base):
     filename = Column(String, nullable=False)
     summary = Column(String, nullable=False)
     tags = Column(String, nullable=True)
+    original_file_path = Column(String, nullable=True)  # PDFファイルの保存パス
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="summaries")

@@ -33,11 +33,12 @@ interface HistoryContent {
 
 interface AiAssistantProps {
   pdfSummaryContent?: string;
+  summaryId?: number;
   initialContents?: HistoryContent[];
   onMessagesChange: (messages: Message[]) => void;
 }
 
-const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialContents, onMessagesChange }) => {
+const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId, initialContents, onMessagesChange }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +65,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: message, pdf_summary: pdfSummaryContent }),
+        body: JSON.stringify({ message: message, pdf_summary: pdfSummaryContent, summary_id: summaryId }),
       });
 
       if (!response.ok) {
