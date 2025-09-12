@@ -333,7 +333,14 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
                     <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
                       <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" color="text.secondary">
-                          {comment.username} - {new Date(comment.created_at).toLocaleString('ja-JP')}
+                          {comment.username} - {new Intl.DateTimeFormat('ja-JP', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          }).format(new Date(comment.created_at + "Z"))}
                         </Typography>
                       </Box>
                       <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>

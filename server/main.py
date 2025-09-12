@@ -200,6 +200,9 @@ class ReactionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 
 class HistoryContentCreateRequest(BaseModel):
@@ -217,6 +220,9 @@ class HistoryContentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 class SummaryHistoryDetailResponse(BaseModel):
     id: int
@@ -229,6 +235,9 @@ class SummaryHistoryDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 class SharedFileResponse(BaseModel):
     id: int
@@ -240,6 +249,9 @@ class SharedFileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -639,7 +651,8 @@ async def add_comment(request: CommentCreateRequest, current_user: User = Depend
     new_comment = Comment(
         summary_id=request.summary_id,
         user_id=current_user.id,
-        content=request.content
+        content=request.content,
+        created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
     )
     db.add(new_comment)
     db.commit()
