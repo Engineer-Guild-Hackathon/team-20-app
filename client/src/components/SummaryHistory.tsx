@@ -350,14 +350,16 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                             color="text.secondary"
                             sx={{ flexShrink: 0, ml: 1 }}
                           >
-                            {new Intl.DateTimeFormat('ja-JP', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                            }).format(new Date(item.created_at + "Z"))}
+                            {item.created_at && !isNaN(new Date(item.created_at + "Z").getTime())
+                              ? new Intl.DateTimeFormat('ja-JP', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                }).format(new Date(item.created_at + "Z"))
+                              : '日付不明'}
                           </Typography>
                         </Box>
                       </>
@@ -427,15 +429,16 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                     <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
                       <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" color="text.secondary">
-                          {comment.username} - {<>{console.log('Raw comment.created_at:', comment.created_at)}
-                          {new Intl.DateTimeFormat('ja-JP', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          }).format(new Date(comment.created_at + "Z"))}</>}
+                          {comment.username} - {comment.created_at && !isNaN(new Date(comment.created_at + "Z").getTime())
+                            ? new Intl.DateTimeFormat('ja-JP', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                              }).format(new Date(comment.created_at + "Z"))
+                            : '日付不明'}
                         </Typography>
                       </Box>
                       <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>

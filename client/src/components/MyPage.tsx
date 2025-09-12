@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Container, Typography, Box } from '@mui/material';
 import SummaryHistory from './SummaryHistory'; // インポート
 
@@ -18,9 +18,13 @@ interface MyPageProps {
   histories: HistoryItem[];
   onHistoryClick: (item: HistoryItem) => void;
   onUpdateHistory: (updatedItem: HistoryItem) => void;
+  fetchHistories: () => Promise<void>; // 追加
 }
 
-const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick, onUpdateHistory }) => { // onHistoryClickを追加
+const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick, onUpdateHistory, fetchHistories }) => { // onHistoryClickを追加
+  useEffect(() => {
+    fetchHistories(); // コンポーネントがマウントされたときに履歴をフェッチ
+  }, [fetchHistories]); // fetchHistoriesが変更されたときに再実行 (App.tsxでuseCallbackでラップされていないため、依存配列に入れる)
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>

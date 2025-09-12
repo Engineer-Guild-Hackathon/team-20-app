@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Typography, 
@@ -100,29 +100,30 @@ function App() {
     }
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    const fetchHistories = async () => {
-      if (isLoggedIn) {
-        const token = localStorage.getItem('access_token');
-        if (!token) return;
-        try {
-          const response = await fetch('http://localhost:8000/api/summaries', {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-          if (response.ok) {
-            const data: HistoryItem[] = await response.json();
-            setSummaryHistories(data);
-          } else {
-            console.error('Failed to fetch summary histories');
-            setSummaryHistories([]);
-          }
-        } catch (error) {
-          console.error('Error fetching summary histories:', error);
+  const fetchHistories = useCallback(async () => {
+    if (isLoggedIn) {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      try {
+        const response = await fetch('http://localhost:8000/api/summaries', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data: HistoryItem[] = await response.json();
+          setSummaryHistories(data);
+        } else {
+          console.error('Failed to fetch summary histories');
           setSummaryHistories([]);
         }
+      } catch (error) {
+        console.error('Error fetching summary histories:', error);
+        setSummaryHistories([]);
       }
-    };
-    fetchHistories();
+    }
+  }, [isLoggedIn, setSummaryHistories]);
+
+  useEffect(() => {
+    // fetchHistories(); // この行は削除またはコメントアウト
   }, [isLoggedIn]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
@@ -140,11 +141,11 @@ function App() {
     showSnackbar('ログアウトしました。', 'info');
   };
 
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setSnackbarOpen(true);
-  };
+  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
 
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
@@ -160,7 +161,7 @@ function App() {
     setChatMessages([]);
   };
 
-  const handleHistoryClick = async (item: HistoryItem) => {
+  const handleHistoryClick = useCallback(async (item: HistoryItem) => {
     if (!item.id) return;
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -182,7 +183,7 @@ function App() {
       console.error(error);
       showSnackbar(error instanceof Error ? error.message : '不明なエラーです。', 'error');
     }
-  };
+  }, [showSnackbar, navigate, setPdfSummary, setPdfFilename, setPdfSummaryId, setInitialContents]);
 
   const handleMessagesChange = (messages: Message[]) => {
     setChatMessages(messages);
@@ -279,13 +280,13 @@ function App() {
     }
   };
 
-  const handleUpdateHistoryItem = (updatedItem: HistoryItem) => {
+  const handleUpdateHistoryItem = useCallback((updatedItem: HistoryItem) => {
     setSummaryHistories(prevHistories => 
       prevHistories.map(item => 
         item.id === updatedItem.id ? updatedItem : item
       )
     );
-  };
+  }, [setSummaryHistories]);
 
   return (
     <>
@@ -341,7 +342,7 @@ function App() {
               </Box>
             </Container>
           } />
-          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} />} />
+          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} />} />
           <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
         </Routes>
       </Box>
