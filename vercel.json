@@ -14,8 +14,8 @@
       "use": "@vercel/python"
     }
   ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "api/index.py" },
-    { "src": "/(.*)", "dest": "client/build/$1" }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/(.*)", "destination": "/client/build/$1" }
   ]
 }
