@@ -8,7 +8,14 @@
     },
     {
       "src": "server/main.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.12",
+        "installCommand": "pip install -r requirements.txt",
+        "env": {
+          "DATABASE_URL": "@database_url"
+        }
+      }
     }
   ],
   "routes": [
@@ -20,5 +27,10 @@
       "src": "/(.*)",
       "dest": "client/build/$1"
     }
-  ]
+  ],
+  "env": {
+    "GEMINI_API_KEY": "@gemini_api_key",
+    "JWT_SECRET_KEY": "@jwt_secret_key",
+    "DATABASE_URL": "@database_url"
+  }
 }
