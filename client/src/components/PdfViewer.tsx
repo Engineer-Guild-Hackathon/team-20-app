@@ -58,7 +58,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
       if (!token) return;
 
       try {
-        const response = await fetch('http://localhost:8000/api/users/me/teams', {
+        const response = await fetch('/api/users/me/teams', {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -89,7 +89,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${id}/comments`, {
+      const response = await fetch(`/api/summaries/${id}/comments`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -140,7 +140,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/comments', {
+      const response = await fetch('/api/comments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +178,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`/api/comments/${commentId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -211,7 +211,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`/api/comments/${commentId}/reactions`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

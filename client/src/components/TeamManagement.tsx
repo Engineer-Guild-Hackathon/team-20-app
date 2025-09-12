@@ -99,7 +99,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/users/me/teams', {
+      const response = await fetch('/api/users/me/teams', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -130,7 +130,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/members`, {
+      const response = await fetch(`/api/teams/${teamId}/members`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -163,7 +163,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/files`, {
+      const response = await fetch(`/api/teams/${teamId}/files`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -252,7 +252,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/teams', {
+      const response = await fetch('/api/teams', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -299,7 +299,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     formData.append('file', selectedFile);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/files`, {
+      const response = await fetch(`/api/teams/${selectedTeam.id}/files`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -338,7 +338,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       const formData = new FormData();
       formData.append('member_username', memberUsernameToAdd);
 
-      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/members`, {
+      const response = await fetch(`/api/teams/${selectedTeam.id}/members`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -374,7 +374,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/members/${memberId}`, {
+      const response = await fetch(`/api/teams/${selectedTeam.id}/members/${memberId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -406,7 +406,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       const formData = new FormData();
       formData.append('new_role', newRole);
 
-      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/members/${memberId}/role`, {
+      const response = await fetch(`/api/teams/${selectedTeam.id}/members/${memberId}/role`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -435,7 +435,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/files/${fileId}`, {
+      const response = await fetch(`/api/files/${fileId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
