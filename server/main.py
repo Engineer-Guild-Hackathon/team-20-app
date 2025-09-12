@@ -224,6 +224,22 @@ class HistoryContentResponse(BaseModel):
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
+class SummaryListItemResponse(BaseModel):
+    id: int
+    filename: str
+    summary: str
+    created_at: datetime
+    team_id: Optional[int] = None
+    username: Optional[str] = None
+    team_name: Optional[str] = None
+    tags: List[str] = []
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+
 class SummaryHistoryDetailResponse(BaseModel):
     id: int
     user_id: int
@@ -231,13 +247,14 @@ class SummaryHistoryDetailResponse(BaseModel):
     filename: str
     summary: str
     created_at: datetime
-    contents: List[HistoryContentResponse] = []
+    contents: Optional[List[HistoryContentResponse]] = None # 変更
 
     class Config:
         from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
+
 
 class SharedFileResponse(BaseModel):
     id: int
@@ -578,7 +595,7 @@ async def say_hello(name: str):
     """挨拶エンドポイント"""
     return {"message": f"こんにちは、{name}さん！"}
 
-@app.get("/api/summaries")
+@app.get("/api/summaries", response_model=List[SummaryListItemResponse])
 async def get_summaries(current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
     """認証されたユーザーの要約履歴と、所属チームの共有要約を取得する"""
     try:
@@ -589,16 +606,22 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         
         user_summaries_data = []
         for summary, username, team_name in user_summaries_query.all():
-            user_summaries_data.append({
-                "id": summary.id,
-                "filename": summary.filename,
-                "summary": summary.summary,
-                "created_at": summary.created_at,
-                "team_id": summary.team_id,
-                "username": username, # 自分の要約の作成者名
-                "team_name": team_name, # チーム名を追加
-                "tags": summary.tags.split(',') if summary.tags else []
-            })
+            # created_at を明示的にUTCに変換
+            if summary.created_at.tzinfo is None:
+                created_at_utc = summary.created_at.replace(tzinfo=timezone.utc)
+            else:
+                created_at_utc = summary.created_at.astimezone(timezone.utc)
+
+            user_summaries_data.append(SummaryListItemResponse(
+                id=summary.id,
+                filename=summary.filename,
+                summary=summary.summary,
+                created_at=created_at_utc,
+                team_id=summary.team_id,
+                username=username,
+                team_name=team_name,
+                tags=summary.tags.split(',') if summary.tags else []
+            ))
 
         # ユーザーが所属するチームのIDを取得
         user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
@@ -615,16 +638,22 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
             shared_summaries_results = shared_summaries_query.all()
 
             for summary, username, team_name in shared_summaries_results:
-                shared_summaries_data.append({
-                    "id": summary.id,
-                    "filename": summary.filename,
-                    "summary": summary.summary,
-                    "created_at": summary.created_at,
-                    "team_id": summary.team_id,
-                    "username": username, # 共有要約の作成者名
-                    "team_name": team_name, # チーム名を追加
-                    "tags": summary.tags.split(',') if summary.tags else []
-                })
+                # created_at を明示的にUTCに変換
+                if summary.created_at.tzinfo is None:
+                    created_at_utc = summary.created_at.replace(tzinfo=timezone.utc)
+                else:
+                    created_at_utc = summary.created_at.astimezone(timezone.utc)
+
+                shared_summaries_data.append(SummaryListItemResponse(
+                    id=summary.id,
+                    filename=summary.filename,
+                    summary=summary.summary,
+                    created_at=created_at_utc,
+                    team_id=summary.team_id,
+                    username=username,
+                    team_name=team_name,
+                    tags=summary.tags.split(',') if summary.tags else []
+                ))
 
         # 両方のリストを結合して返す
         all_summaries = user_summaries_data + shared_summaries_data
@@ -633,8 +662,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         # ここでは単純に結合しているため、重複排除とソートはフロントエンドで行うか、
         # より複雑なクエリを構築する必要があります。
         # 例: set()を使って重複排除し、リストに変換後ソート
-        unique_summaries = list({s["id"]: s for s in all_summaries}.values())
-        unique_summaries.sort(key=lambda x: x["created_at"], reverse=True)
+        unique_summaries = list({s.id: s for s in all_summaries}.values())
+        unique_summaries.sort(key=lambda x: x.created_at, reverse=True)
 
         return unique_summaries
     except Exception as e:
@@ -1118,6 +1147,34 @@ async def get_messages(
 
 
 @app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
+async def get_summary_detail(
+    summary_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """IDに基づいて特定の要約履歴とその関連コンテンツを取得する"""
+    summary_history = db.query(SummaryHistory).options(
+        joinedload(SummaryHistory.contents)
+    ).filter(SummaryHistory.id == summary_id).first()
+
+    if not summary_history:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック
+    is_owner = summary_history.user_id == current_user.id
+    is_team_member = False
+    if summary_history.team_id:
+        membership = db.query(TeamMember).filter(
+            TeamMember.team_id == summary_history.team_id,
+            TeamMember.user_id == current_user.id
+        ).first()
+        if membership:
+            is_team_member = True
+
+    if not is_owner and not is_team_member:
+        raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
+
+    return summary_history
 
 @app.put("/api/summaries/{summary_id}/tags")
 async def update_summary_tags(

@@ -12,6 +12,9 @@ import {
   ListItem,
 } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
+import 'prismjs/prism'; // Prismオブジェクトをグローバルに公開
+import 'prismjs/themes/prism.css';
+import 'prismjs/components/prism-python';
 
 // 型定義
 export interface Message {
@@ -45,12 +48,13 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
     onMessagesChange(messages);
   }, [messages, onMessagesChange]);
 
-  const handleSend = async (messageToSend?: string) => {
+  const handleSend = async (messageToSend?: string, displayMessage?: string) => {
     const message = messageToSend || input;
     if (!message.trim()) return;
 
-    const userMessage: Message = { sender: 'user', text: message };
-    setMessages((prev) => [...prev, userMessage]);
+    // チャット画面に表示するメッセージ
+    const userDisplayMessage: Message = { sender: 'user', text: displayMessage || message };
+    setMessages((prev) => [...prev, userDisplayMessage]);
     setInput('');
     setLoading(true);
 
@@ -118,10 +122,11 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
       sx={{
         height: '100%',
         p: 2,
-        border: '1px solid #e0e0e0',
+        border: '1px solid #00bcd4',
         borderRadius: 2,
         display: 'flex',
         flexDirection: 'column',
+        boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -130,7 +135,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
           AI Assistant
         </Typography>
       </Box>
-      <Divider sx={{ mb: 2 }} />
+      <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
 
       <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}>
         <List>
@@ -139,15 +144,39 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
               <Paper
                 elevation={2}
                 sx={{
-                  p: 1.5,
-                  bgcolor: msg.sender === 'user' ? 'primary.main' : 'grey.300',
+                                    p: 1.5,
+                  bgcolor: msg.sender === 'user' ? 'primary.main' : 'background.paper', // AIメッセージの背景色をテーマのpaper色に
                   color: msg.sender === 'user' ? 'primary.contrastText' : 'text.primary',
                   maxWidth: '80%',
+                  border: '1px solid #00bcd4', // メッセージのボーダー
+                  boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)', // メッセージのシャドウ
                 }}
               >
                 <ReactMarkdown
                   components={{
                     p: ({ children }) => <p style={{ margin: 0 }}>{children}</p>,
+                    pre: ({ children }) => (
+                      <pre style={{
+                        backgroundColor: '#1a1a2e', // ダークな背景色
+                        color: '#e0e0e0', // 明るい文字色
+                        border: '1px solid #00bcd4', // サイバーチックなボーダー
+                        borderRadius: '4px',
+                        padding: '10px',
+                        overflowX: 'auto', // 横スクロール
+                        boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)', // サイバーチックなシャドウ
+                        whiteSpace: "break-spaces"
+                      }}>
+                        {children}
+                      </pre>
+                    ),
+                    code: ({ children }) => (
+                      <code style={{
+                        fontFamily: '"Share Tech Mono", monospace', // サイバーチックなフォント
+                        fontSize: '0.9em',
+                      }}>
+                        {children}
+                      </code>
+                    ),
                 }}>
                   {msg.text}
                 </ReactMarkdown>
@@ -162,13 +191,13 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
         </List>
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
-        <Button variant="outlined" onClick={() => handleSend('要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．')}>
-          コード生成
+        <Button variant="outlined" onClick={() => handleSend('要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．', 'Pythonコード生成')}>
+          Pythonコード生成
         </Button>
-        <Button variant="outlined" onClick={() => handleSend('用語を解説してください')}>
+        <Button variant="outlined" onClick={() => handleSend('用語を解説してください', '用語解説')}>
           用語解説
         </Button>
-        <Button variant="outlined" onClick={() => handleSend('要約内容が正しいか検索してください')}>
+        <Button variant="outlined" onClick={() => handleSend('要約内容が正しいかwebで検索してください', '要約内容チェック')}>
           要約内容チェック
         </Button>
       </Box>

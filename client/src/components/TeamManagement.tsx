@@ -536,7 +536,14 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
           </Button>
         </Box>
 
-        <Dialog open={createTeamDialogOpen} onClose={() => setCreateTeamDialogOpen(false)}>
+        <Dialog open={createTeamDialogOpen} onClose={() => setCreateTeamDialogOpen(false)}
+          PaperProps={{
+            sx: {
+              border: '1px solid #00bcd4', // サイバーチックなボーダー色に変更
+              boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)', // より強調されたシャドウ
+            }
+          }}
+        >
           <DialogTitle>新しいチームを作成</DialogTitle>
           <DialogContent>
             <TextField
@@ -569,7 +576,13 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
           ) : (
             <List>
               {myTeams.map((team) => (
-                <ListItemButton key={team.id} onClick={() => setSelectedTeam(team)} divider>
+                <ListItemButton key={team.id} onClick={() => setSelectedTeam(team)} divider
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 188, 212, 0.1)', // ホバー時の背景色
+                    },
+                  }}
+                >
                   <ListItemText
                     primary={team.name}
                     secondary={`役割: ${team.role}`}
@@ -581,8 +594,8 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
         </Box>
 
         {selectedTeam && (
-          <Box sx={{ mt: 4, border: '1px solid #ccc', borderRadius: '8px' }}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ mt: 4, border: '1px solid #00bcd4', borderRadius: '8px' }}>
+            <Box sx={{ borderBottom: 1, borderColor: '#00bcd4' }}>
               <Tabs value={currentTab} onChange={handleTabChange} aria-label="team management tabs">
                 {tabs.map((tab, index) => (
                   <Tab label={tab.label} key={index} />
@@ -704,18 +717,18 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                 <Typography variant="h5" component="h2" gutterBottom>
                   チャット
                 </Typography>
-                <Box sx={{ height: '400px', overflowY: 'auto', border: '1px solid #eee', p: 2, mb: 2 }}>
+                <Box sx={{ height: '400px', overflowY: 'auto', border: '1px solid #00bcd4', p: 2, mb: 2 }}>
                   {loadingMessages ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                       <CircularProgress />
                     </Box>
                   ) : messages.length === 0 ? (
-                    <Typography variant="body2" color="textSecondary">まだメッセージはありません。</Typography>
+                    <Typography variant="body2" color="text.secondary">まだメッセージはありません。</Typography>
                   ) : (
                     <List>
                       {messages.map((message) => (
                         <ListItem key={message.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', p: 0.5 }}>
-                          <Typography variant="caption" color="textSecondary">
+                          <Typography variant="caption" color="text.secondary">
                             {message.username} ({new Date(message.created_at).toLocaleString()})
                           </Typography>
                           <Typography variant="body1">
@@ -750,7 +763,14 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
           </Box>
         )}
 
-      <Dialog open={addMemberDialogOpen} onClose={() => setAddMemberDialogOpen(false)}>
+      <Dialog open={addMemberDialogOpen} onClose={() => setAddMemberDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            border: '1px solid #00bcd4', // サイバーチックなボーダー色に変更
+            boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)', // より強調されたシャドウ
+          }
+        }}
+      >
         <DialogTitle>メンバーを追加</DialogTitle>
         <DialogContent>
           <TextField

@@ -291,13 +291,13 @@ function App() {
   return (
     <>
       <Box sx={{ flexGrow: 1 }}>
-        <AppBar position="static" sx={{ backgroundColor: '#1976d2', py: 1 }}>
+        <AppBar position="static" sx={{ py: 1 }}>
           <Container maxWidth="xl">
             <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
               <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
                 <Link to="/" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center' }}>
                   {location.pathname !== '/' && <HomeIcon sx={{ mr: 1 }} />}
-                  CogniStudy
+                  <img src="./product_logo.svg" alt="Product Logo" style={{ height: '60px', marginLeft: '8px', filter: 'drop-shadow(0 0 2px white)' }} /> {/* 追加 */}
                 </Link>
               </Typography>
               {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}

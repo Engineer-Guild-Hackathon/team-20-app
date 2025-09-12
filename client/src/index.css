@@ -1,10 +1,10 @@
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Share Tech Mono', monospace; /* サイバーチックなフォントに変更 */
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -moz-osx-smoothing: grayscale;
+  background-color: #1a1a2e; /* ダークモードの背景色 */
+  color: #e0e0e0; /* 明るい文字色 */
 }
 
 code {

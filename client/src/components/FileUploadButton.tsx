@@ -81,7 +81,6 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       <Button 
         variant="contained" 
         color="secondary"
-        sx={{ backgroundColor: '#f50057' }}
         onClick={handleUpload}
         disabled={isUploading}
         startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUpload />}
