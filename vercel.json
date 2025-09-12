@@ -10,12 +10,12 @@
       }
     },
     {
-      "src": "api/[...path].py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
     "routes": [
-      { "src": "/api/(.*)", "dest": "api/[...path].py" },
+      { "src": "/api/(.*)", "dest": "api/index.py" },
       { "src": "/(.*)", "dest": "client/build/$1" }
     ]
 }
