@@ -18,6 +18,7 @@ from typing import Optional, List
 import uuid
 from fastapi.responses import FileResponse
 import re # 追加
+from supabase import create_client, Client
 
 # ファイル保存ディレクトリの設定（Vercel環境では一時無効化）
 UPLOAD_DIRECTORY = "./shared_files"
@@ -29,7 +30,18 @@ if not IS_VERCEL:
         os.makedirs(UPLOAD_DIRECTORY)
         logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
 else:
-    logging.info("Vercel environment detected - file upload temporarily disabled")
+    logging.info("Vercel environment detected - using Supabase Storage")
+
+# Supabase接続設定
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://mticbtcxbltvjflcvzcd.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+supabase: Client = None
+if SUPABASE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    logging.info("Supabase client initialized")
+else:
+    logging.warning("SUPABASE_ANON_KEY not found - file upload will be disabled")
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -548,9 +560,9 @@ async def upload_pdf(
     db: Session = Depends(get_db)
 ):
     """PDF アップロードと要約生成エンドポイント（認証なし）"""
-    # Vercel環境では一時的にファイルアップロードを無効化
-    if IS_VERCEL:
-        raise HTTPException(status_code=503, detail="ファイルアップロード機能は現在メンテナンス中です")
+    # Supabaseクライアントが初期化されていない場合はエラー
+    if not supabase:
+        raise HTTPException(status_code=503, detail="ストレージサービスが利用できません")
     
     try:
         if not file.filename.lower().endswith('.pdf'):
@@ -946,22 +958,51 @@ async def upload_shared_file(
     if len(file_content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail=f"ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
 
-    # ファイルを保存
-    # ファイル名の衝突を避けるため、UUIDなどを利用することも検討
+    # ファイルを保存（Supabase StorageまたはローカルFilesystem）
     unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-
-    try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
-    except Exception as e:
-        logging.error(f"Error saving file to disk: {e}")
-        raise HTTPException(status_code=500, detail="ファイルの保存中にエラーが発生しました")
+    
+    if supabase and IS_VERCEL:
+        # Vercel環境: Supabase Storageにアップロード
+        try:
+            bucket_name = "shared-files"  # バケット名
+            file_path = f"team-{team_id}/{unique_filename}"
+            
+            # ファイルをSupabase Storageにアップロード
+            response = supabase.storage.from_(bucket_name).upload(
+                path=file_path,
+                file=file_content,
+                file_options={"content-type": file.content_type}
+            )
+            
+            if response.status_code != 200:
+                logging.error(f"Supabase upload error: {response}")
+                raise HTTPException(status_code=500, detail="ファイルのアップロードに失敗しました")
+                
+            # パブリックURLを取得
+            public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+            storage_path = file_path
+            
+            logging.info(f"File uploaded to Supabase: {file_path}")
+            
+        except Exception as e:
+            logging.error(f"Error uploading file to Supabase: {e}")
+            raise HTTPException(status_code=500, detail="ファイルのアップロード中にエラーが発生しました")
+    else:
+        # ローカル環境: ファイルシステムに保存
+        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+        storage_path = file_path
+        
+        try:
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_content)
+        except Exception as e:
+            logging.error(f"Error saving file to disk: {e}")
+            raise HTTPException(status_code=500, detail="ファイルの保存中にエラーが発生しました")
 
     # データベースに記録
     new_shared_file = SharedFile(
         filename=file.filename,
-        filepath=file_path,
+        filepath=storage_path,
         team_id=team_id,
         uploaded_by_user_id=current_user.id
     )
@@ -1081,10 +1122,30 @@ async def download_shared_file(
         raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
 
     file_path = shared_file.filepath
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
+    
+    if supabase and IS_VERCEL:
+        # Vercel環境: Supabase Storageからファイルを取得してリダイレクト
+        try:
+            bucket_name = "shared-files"
+            # パブリックURLを取得してリダイレクト
+            public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+            
+            if public_url:
+                # リダイレクト応答を返す
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=public_url)
+            else:
+                raise HTTPException(status_code=404, detail="ファイルが見つかりません (Supabase Storage)")
+                
+        except Exception as e:
+            logging.error(f"Error accessing file from Supabase: {e}")
+            raise HTTPException(status_code=500, detail="ファイルの取得中にエラーが発生しました")
+    else:
+        # ローカル環境: ファイルシステムから取得
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
 
-    return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
+        return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
 
 
 @app.post("/api/teams/{team_id}/messages", response_model=MessageResponse)
