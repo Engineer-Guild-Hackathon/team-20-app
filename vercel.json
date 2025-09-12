@@ -11,10 +11,7 @@
       "use": "@vercel/python",
       "config": {
         "runtime": "python3.12",
-        "installCommand": "pip install -r requirements.txt",
-        "env": {
-          "DATABASE_URL": "@database_url"
-        }
+        "installCommand": "pip install -r requirements.txt"
       }
     }
   ],
