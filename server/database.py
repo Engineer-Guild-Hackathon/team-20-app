@@ -20,6 +20,7 @@ class User(Base):
     summaries = relationship("SummaryHistory", back_populates="user")
     comments = relationship("Comment", back_populates="user")
     uploaded_files = relationship("SharedFile", back_populates="uploaded_by_user")
+    reactions = relationship("Reaction", back_populates="user")
 
 class Team(Base):
     __tablename__ = "teams"
@@ -55,6 +56,19 @@ class Comment(Base):
 
     summary = relationship("SummaryHistory", back_populates="comments")
     user = relationship("User", back_populates="comments")
+    reactions = relationship("Reaction", back_populates="comment", cascade="all, delete-orphan")
+
+class Reaction(Base):
+    __tablename__ = "reactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reaction_type = Column(String, nullable=False) # 例: "👍", "❤️", "😂"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    comment = relationship("Comment", back_populates="reactions")
+    user = relationship("User", back_populates="reactions")
 
 class SummaryHistory(Base):
     __tablename__ = "summary_histories"

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Paper, Typography, Box, Divider, Chip, Button, FormControl, InputLabel, Select, MenuItem, TextField, List, ListItem, ListItemText, CircularProgress } from '@mui/material';
-import { PictureAsPdf, AutoAwesome, Save as SaveIcon, Comment as CommentIcon } from '@mui/icons-material';
+import { Paper, Typography, Box, Divider, Chip, Button, FormControl, InputLabel, Select, MenuItem, TextField, List, ListItem, CircularProgress, Menu, IconButton, Snackbar, Alert } from '@mui/material';
+import { PictureAsPdf, AutoAwesome, Save as SaveIcon, Comment as CommentIcon, AddReaction as AddReactionIcon } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
+
+
 
 interface PdfViewerProps {
   summary?: string;
@@ -24,6 +26,14 @@ interface Comment {
   username: string;
   content: string;
   created_at: string;
+  reactions: {
+    id: number;
+    user_id: number;
+    username: string;
+    reaction_type: string;
+    created_at: string;
+  }[];
+  reaction_counts: { [key: string]: number };
 }
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tags, onSave, username }) => {
@@ -33,6 +43,12 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
   const [comments, setComments] = useState<Comment[]>([]);
   const [newCommentContent, setNewCommentContent] = useState<string>('');
   const [loadingComments, setLoadingComments] = useState<boolean>(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const openReactionMenu = Boolean(anchorEl);
+  const [currentCommentIdForReaction, setCurrentCommentIdForReaction] = useState<number | null>(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('info');
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -144,6 +160,82 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
   };
 
+  const handleClickReactionMenu = (event: React.MouseEvent<HTMLButtonElement>, commentId: number) => {
+    setAnchorEl(event.currentTarget);
+    setCurrentCommentIdForReaction(commentId);
+  };
+
+  const handleCloseReactionMenu = () => {
+    setAnchorEl(null);
+    setCurrentCommentIdForReaction(null);
+  };
+
+  const handleAddReaction = async (commentId: number, reactionType: string) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.error('Not logged in');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reaction_type: reactionType }),
+      });
+
+      if (response.ok) {
+        if (summaryId) {
+          fetchComments(summaryId); // コメントリストを再フェッチしてリアクションを更新
+        }
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to add reaction:', errorData.detail);
+        setSnackbarMessage(errorData.detail);
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('Error adding reaction:', error);
+    }
+  };
+
+  const handleRemoveReaction = async (commentId: number, reactionType: string) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.error('Not logged in');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reaction_type: reactionType }),
+      });
+
+      if (response.ok) {
+        if (summaryId) {
+          fetchComments(summaryId); // コメントリストを再フェッチしてリアクションを更新
+        }
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to remove reaction:', errorData.detail);
+        setSnackbarMessage(errorData.detail);
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('Error removing reaction:', error);
+    }
+  };
+
   return (
     <Paper 
       sx={{ 
@@ -238,16 +330,58 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
               ) : (
                 <List dense>
                   {comments.map((comment) => (
-                    <ListItem key={comment.id} disablePadding>
-                      <ListItemText
-                        primary={
-                          <Typography variant="body2">
-                            <Typography component="span" fontWeight="bold">{comment.username}</Typography>
-                            {`: ${comment.content}`}
-                          </Typography>
-                        }
-                        secondary={new Date(comment.created_at).toLocaleString('ja-JP')}
-                      />
+                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
+                      <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {comment.username} - {new Date(comment.created_at).toLocaleString('ja-JP')}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>
+                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {Object.entries(comment.reaction_counts || {}).map(([type, count]) => (
+                          <Chip
+                            key={type}
+                            label={`${type} ${count}`}
+                            size="small"
+                            onClick={() => handleRemoveReaction(comment.id, type)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ))}
+                        <IconButton
+                          aria-label="add reaction"
+                          size="small"
+                          onClick={(event) => handleClickReactionMenu(event, comment.id)}
+                          sx={{ p: '4px' }}
+                        >
+                          <AddReactionIcon fontSize="small" />
+                        </IconButton>
+                        <Menu
+                          anchorEl={anchorEl}
+                          open={openReactionMenu && currentCommentIdForReaction === comment.id}
+                          onClose={handleCloseReactionMenu}
+                          MenuListProps={{
+                            'aria-labelledby': 'basic-button',
+                            sx: {
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              maxWidth: '200px', // 適宜調整
+                            }
+                          }}
+                        >
+                          {['👍', '❤️', '😂', '🎉', '😊', '😢'].map((emoji) => (
+                            <MenuItem
+                              key={emoji}
+                              onClick={() => {
+                                handleAddReaction(comment.id, emoji);
+                                handleCloseReactionMenu();
+                              }}
+                              sx={{ p: '4px 8px' }} // MenuItemのパディングを調整
+                            >
+                              {emoji}
+                            </MenuItem>
+                          ))}
+                        </Menu>
+                      </Box>
                     </ListItem>
                   ))}
                 </List>
@@ -289,6 +423,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
           </Typography>
         </Box>
       )}
+    <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={() => setSnackbarOpen(false)}>
+        <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarSeverity} sx={{ width: '100%'}}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Paper>
   );
 };

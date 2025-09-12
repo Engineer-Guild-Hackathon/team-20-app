@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -170,11 +170,6 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
 
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment # Team, TeamMember, Commentを追加
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from typing import Optional
-
 
 class SaveSummaryRequest(BaseModel):
     filename: str
@@ -191,6 +186,20 @@ class TeamCreateRequest(BaseModel):
 class CommentCreateRequest(BaseModel):
     summary_id: int
     content: str
+
+class ReactionCreateRequest(BaseModel):
+    reaction_type: str
+
+class ReactionResponse(BaseModel):
+    id: int
+    comment_id: int
+    user_id: int
+    username: str
+    reaction_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class HistoryContentCreateRequest(BaseModel):
@@ -638,6 +647,80 @@ async def add_comment(request: CommentCreateRequest, current_user: User = Depend
 
     return {"message": "コメントが追加されました", "comment_id": new_comment.id}
 
+@app.post("/api/comments/{comment_id}/reactions")
+async def add_reaction(
+    comment_id: int,
+    request: ReactionCreateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """コメントにリアクションを追加するエンドポイント"""
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="コメントが見つかりません")
+
+    # ユーザーが要約にアクセスできるか確認（コメント追加時と同じロジック）
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == comment.summary_id).first()
+    if not summary: # Should not happen if comment exists, but for safety
+        raise HTTPException(status_code=404, detail="関連する要約が見つかりません")
+
+    can_access = False
+    if summary.user_id == current_user.id:
+        can_access = True
+    elif summary.team_id:
+        team_membership = db.query(TeamMember).filter(
+            TeamMember.user_id == current_user.id,
+            TeamMember.team_id == summary.team_id
+        ).first()
+        if team_membership:
+            can_access = True
+
+    if not can_access:
+        raise HTTPException(status_code=403, detail="このコメントにリアクションする権限がありません")
+
+    # 同じユーザーが同じリアクションを既にしているか確認
+    existing_reaction = db.query(Reaction).filter(
+        Reaction.comment_id == comment_id,
+        Reaction.user_id == current_user.id,
+        Reaction.reaction_type == request.reaction_type
+    ).first()
+
+    if existing_reaction:
+        raise HTTPException(status_code=400, detail="既に同じリアクションをしています")
+
+    new_reaction = Reaction(
+        comment_id=comment_id,
+        user_id=current_user.id,
+        reaction_type=request.reaction_type
+    )
+    db.add(new_reaction)
+    db.commit()
+    db.refresh(new_reaction)
+
+    return {"message": "リアクションが追加されました", "reaction_id": new_reaction.id}
+
+@app.delete("/api/comments/{comment_id}/reactions")
+async def remove_reaction(
+    comment_id: int,
+    request: ReactionCreateRequest, # Use ReactionCreateRequest to specify reaction_type to remove
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """コメントからリアクションを削除するエンドポイント"""
+    reaction_to_remove = db.query(Reaction).filter(
+        Reaction.comment_id == comment_id,
+        Reaction.user_id == current_user.id,
+        Reaction.reaction_type == request.reaction_type
+    ).first()
+
+    if not reaction_to_remove:
+        raise HTTPException(status_code=404, detail="指定されたリアクションが見つかりません")
+
+    db.delete(reaction_to_remove)
+    db.commit()
+
+    return {"message": "リアクションが削除されました"}
+
 @app.get("/api/summaries/{summary_id}/comments")
 async def get_comments_for_summary(summary_id: int, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
     """要約のコメントを取得するエンドポイント"""
@@ -661,14 +744,41 @@ async def get_comments_for_summary(summary_id: int, current_user: User = Depends
     if not can_access:
         raise HTTPException(status_code=403, detail="この要約のコメントを閲覧する権限がありません")
 
-    comments = db.query(Comment, User).join(User).filter(
+    comments_query = db.query(Comment, User).join(User).filter(
         Comment.summary_id == summary_id
-    ).order_by(Comment.created_at.asc()).all()
+    ).order_by(Comment.created_at.asc())
 
-    comments_data = [
-        {"id": comment.id, "user_id": comment.user_id, "username": user.username, "content": comment.content, "created_at": comment.created_at}
-        for comment, user in comments
-    ]
+    comments_data = []
+    for comment, user in comments_query.all():
+        # 各コメントのリアクションを取得
+        reactions = db.query(Reaction, User).join(User).filter(
+            Reaction.comment_id == comment.id
+        ).all()
+
+        reaction_counts = {}
+        user_reactions = []
+        for reaction, reaction_user in reactions:
+            if reaction.reaction_type not in reaction_counts:
+                reaction_counts[reaction.reaction_type] = 0
+            reaction_counts[reaction.reaction_type] += 1
+            
+            user_reactions.append({
+                "id": reaction.id,
+                "user_id": reaction.user_id,
+                "username": reaction_user.username,
+                "reaction_type": reaction.reaction_type,
+                "created_at": reaction.created_at
+            })
+
+        comments_data.append({
+            "id": comment.id,
+            "user_id": comment.user_id,
+            "username": user.username,
+            "content": comment.content,
+            "created_at": comment.created_at,
+            "reactions": user_reactions, # 全てのリアクション詳細
+            "reaction_counts": reaction_counts # リアクションの種類ごとのカウント
+        })
 
     return comments_data
 
