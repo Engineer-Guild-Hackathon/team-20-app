@@ -51,22 +51,27 @@ app = FastAPI(title="Team 20 API", version="1.0.0")
 # データベーステーブルを作成
 init_db()
 
-# CORS設定 - フロントエンドからのアクセスを許可
-allowed_origins = [
-    "http://localhost:3000",  # ローカル開発用
-    "https://team-20-app.vercel.app",  # Vercel本番環境
-    "https://team-20-app-*.vercel.app",  # Vercelプレビュー環境
+"""
+CORS 設定:
+- 固定ドメイン: https://reproducehub.vercel.app
+- プレビュー:   https://reproducehub-*.vercel.app
+- 開発:         http://localhost:3000
+Cookie ベースの認証は使わず、Bearer トークン前提のため allow_credentials は False。
+"""
+cors_origins = [
+    "https://reproducehub.vercel.app",
+    "https://reproducehub-*.vercel.app",
+    "http://localhost:3000",
 ]
-
-# 環境変数からフロントエンドURLを取得
 frontend_url = os.getenv("FRONTEND_URL")
-if frontend_url:
-    allowed_origins.append(frontend_url)
+if frontend_url and frontend_url not in cors_origins:
+    cors_origins.append(frontend_url)
+cors_allow_credentials = False
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

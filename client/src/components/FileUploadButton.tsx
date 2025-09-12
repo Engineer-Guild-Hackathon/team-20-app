@@ -41,7 +41,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/upload-pdf`, {
+      const response = await fetch(`/api/upload-pdf`, {
         method: 'POST',
         body: formData,
       });
