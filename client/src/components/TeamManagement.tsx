@@ -462,7 +462,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     if (!selectedTeam || !newMessageContent.trim()) {
       showSnackbar('メッセージを入力してください。', 'warning');
       return;
@@ -497,7 +497,21 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       console.error('Error sending message:', error);
       showSnackbar('ネットワークエラーが発生しました。', 'error');
     }
-  };
+  }, [selectedTeam, newMessageContent, showSnackbar]);
+
+  const handleNewMessageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessageContent(e.target.value);
+  }, []);
+
+  const handleNewMessageKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSendMessage();
+    }
+  }, [handleSendMessage]);
+
+  
+
+  
 
   const isCurrentUserAdmin = selectedTeam ? myTeams.find(t => t.id === selectedTeam.id)?.role === 'admin' : false;
 
@@ -713,16 +727,13 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                   )}
                 </Box>
                 <TextField
+                  autoFocus
                   fullWidth
                   variant="outlined"
                   placeholder="メッセージを入力..."
                   value={newMessageContent}
-                  onChange={(e) => setNewMessageContent(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleSendMessage();
-                    }
-                  }}
+                  onChange={handleNewMessageChange}
+                  onKeyPress={handleNewMessageKeyPress}
                   sx={{ mb: 1 }}
                 />
                 <Button
