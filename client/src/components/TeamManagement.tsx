@@ -30,6 +30,15 @@ interface SharedFile {
   uploaded_at: string; // ISO 8601 string
 }
 
+interface Message {
+  id: number;
+  team_id: number;
+  user_id: number;
+  username: string;
+  content: string;
+  created_at: string; // ISO 8601 string
+}
+
 const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [teamName, setTeamName] = useState<string>('');
   const [myTeams, setMyTeams] = useState<Team[]>([]);
@@ -44,6 +53,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
   const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState<boolean>(false); // New state for create team dialog
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessageContent, setNewMessageContent] = useState<string>('');
+  const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
 
   interface TabPanelProps {
     children?: React.ReactNode;
@@ -74,6 +86,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const tabs = [
     { label: 'チーム管理' },
     { label: 'ファイル共有' },
+    { label: 'チャット' },
   ];
 
   const fetchMyTeams = useCallback(async () => {
@@ -173,6 +186,39 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   }, [showSnackbar]);
 
+  const fetchMessages = useCallback(async (teamId: number) => {
+    setLoadingMessages(true);
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      setLoadingMessages(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/messages`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data: Message[] = await response.json();
+        setMessages(data);
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`メッセージの取得に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [showSnackbar]);
+
   useEffect(() => {
     fetchMyTeams();
   }, [fetchMyTeams]);
@@ -180,17 +226,18 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   useEffect(() => {
     if (selectedTeam) {
       fetchTeamMembers(selectedTeam.id);
-      // selectedTeam が変更されたら、ファイルも取得
       fetchSharedFiles(selectedTeam.id);
+      fetchMessages(selectedTeam.id);
     }
-  }, [selectedTeam, fetchTeamMembers, fetchSharedFiles]);
+  }, [selectedTeam, fetchTeamMembers, fetchSharedFiles, fetchMessages]);
 
-  // currentTab が変更されたら、ファイル共有タブの場合にファイルを再取得
   useEffect(() => {
     if (selectedTeam && currentTab === 1) { // 1は「ファイル共有」タブのインデックス
       fetchSharedFiles(selectedTeam.id);
+    } else if (selectedTeam && currentTab === 2) { // 2は「チャット」タブのインデックス
+      fetchMessages(selectedTeam.id);
     }
-  }, [currentTab, selectedTeam, fetchSharedFiles]);
+  }, [currentTab, selectedTeam, fetchSharedFiles, fetchMessages]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {
@@ -415,6 +462,43 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   };
 
+  const handleSendMessage = async () => {
+    if (!selectedTeam || !newMessageContent.trim()) {
+      showSnackbar('メッセージを入力してください。', 'warning');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: newMessageContent }),
+      });
+
+      if (response.ok) {
+        const sentMessage: Message = await response.json();
+        setMessages((prevMessages) => [...prevMessages, sentMessage]);
+        setNewMessageContent('');
+        showSnackbar('メッセージを送信しました！', 'success');
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`メッセージの送信に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  };
+
   const isCurrentUserAdmin = selectedTeam ? myTeams.find(t => t.id === selectedTeam.id)?.role === 'admin' : false;
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -599,6 +683,57 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                     ))}
                   </List>
                 )}
+              </Box>
+            </TabPanel>
+            <TabPanel value={currentTab} index={2}>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="h5" component="h2" gutterBottom>
+                  チャット
+                </Typography>
+                <Box sx={{ height: '400px', overflowY: 'auto', border: '1px solid #eee', p: 2, mb: 2 }}>
+                  {loadingMessages ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : messages.length === 0 ? (
+                    <Typography variant="body2" color="textSecondary">まだメッセージはありません。</Typography>
+                  ) : (
+                    <List>
+                      {messages.map((message) => (
+                        <ListItem key={message.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', p: 0.5 }}>
+                          <Typography variant="caption" color="textSecondary">
+                            {message.username} ({new Date(message.created_at).toLocaleString()})
+                          </Typography>
+                          <Typography variant="body1">
+                            {message.content}
+                          </Typography>
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Box>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  placeholder="メッセージを入力..."
+                  value={newMessageContent}
+                  onChange={(e) => setNewMessageContent(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSendMessage();
+                    }
+                  }}
+                  sx={{ mb: 1 }}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSendMessage}
+                  fullWidth
+                  disabled={!newMessageContent.trim()}
+                >
+                  送信
+                </Button>
               </Box>
             </TabPanel>
           </Box>

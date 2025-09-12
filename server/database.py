@@ -21,6 +21,7 @@ class User(Base):
     comments = relationship("Comment", back_populates="user")
     uploaded_files = relationship("SharedFile", back_populates="uploaded_by_user")
     reactions = relationship("Reaction", back_populates="user")
+    messages = relationship("Message", back_populates="user")
 
 class Team(Base):
     __tablename__ = "teams"
@@ -33,6 +34,7 @@ class Team(Base):
     members = relationship("TeamMember", back_populates="team")
     summaries = relationship("SummaryHistory", back_populates="team")
     shared_files = relationship("SharedFile", back_populates="team")
+    messages = relationship("Message", back_populates="team")
 
 class TeamMember(Base):
     __tablename__ = "team_members"
@@ -110,3 +112,15 @@ class SharedFile(Base):
 
     team = relationship("Team", back_populates="shared_files")
     uploaded_by_user = relationship("User", back_populates="uploaded_files")
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    team = relationship("Team", back_populates="messages")
+    user = relationship("User", back_populates="messages")

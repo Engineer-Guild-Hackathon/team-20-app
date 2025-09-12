@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -246,6 +246,23 @@ class SharedFileResponse(BaseModel):
     uploaded_by_user_id: int
     uploaded_by_username: str
     uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+
+class MessageCreateRequest(BaseModel):
+    content: str
+
+class MessageResponse(BaseModel):
+    id: int
+    team_id: int
+    user_id: int
+    username: str
+    content: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -1022,13 +1039,14 @@ async def download_shared_file(
     return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
 
 
-@app.get("/api/teams/{team_id}/files", response_model=List[SharedFileResponse])
-async def get_shared_files(
+@app.post("/api/teams/{team_id}/messages", response_model=MessageResponse)
+async def send_message(
     team_id: int,
+    request: MessageCreateRequest,
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
-    """チームに共有されたファイルの一覧を取得するエンドポイント"""
+    """チームにメッセージを送信するエンドポイント"""
     # チームが存在するか確認
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:
@@ -1040,82 +1058,66 @@ async def get_shared_files(
         TeamMember.team_id == team_id
     ).first()
     if not team_membership:
-        raise HTTPException(status_code=403, detail="このチームのファイルリストを閲覧する権限がありません")
+        raise HTTPException(status_code=403, detail="このチームにメッセージを送信する権限がありません")
 
-    # チームに共有されたファイルを取得
-    shared_files = db.query(SharedFile, User.username).join(User, SharedFile.uploaded_by_user_id == User.id).filter(
-        SharedFile.team_id == team_id
-    ).order_by(SharedFile.uploaded_at.desc()).all()
+    new_message = Message(
+        team_id=team_id,
+        user_id=current_user.id,
+        content=request.content,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
 
-    # レスポンスモデルに合うようにデータを整形
-    files_data = []
-    for file, username in shared_files:
-        files_data.append(SharedFileResponse(
-            id=file.id,
-            filename=file.filename,
-            team_id=file.team_id,
-            uploaded_by_user_id=file.uploaded_by_user_id,
-            uploaded_by_username=username,
-            uploaded_at=file.uploaded_at
-        ))
-    return files_data
+    return MessageResponse(
+        id=new_message.id,
+        team_id=new_message.team_id,
+        user_id=new_message.user_id,
+        username=current_user.username, # current_userから取得
+        content=new_message.content,
+        created_at=new_message.created_at
+    )
 
 
-@app.get("/api/files/{file_id}")
-async def download_shared_file(
-    file_id: int,
+@app.get("/api/teams/{team_id}/messages", response_model=List[MessageResponse])
+async def get_messages(
+    team_id: int,
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
-    """共有ファイルをダウンロードするエンドポイント"""
-    shared_file = db.query(SharedFile).filter(SharedFile.id == file_id).first()
-    if not shared_file:
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+    """チームのメッセージ履歴を取得するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
 
-    # ユーザーがファイルが共有されているチームのメンバーであることを確認
+    # ユーザーがチームのメンバーであることを確認
     team_membership = db.query(TeamMember).filter(
         TeamMember.user_id == current_user.id,
-        TeamMember.team_id == shared_file.team_id
+        TeamMember.team_id == team_id
     ).first()
     if not team_membership:
-        raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+        raise HTTPException(status_code=403, detail="このチームのメッセージを閲覧する権限がありません")
 
-    file_path = shared_file.filepath
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
+    messages = db.query(Message, User.username).join(User, Message.user_id == User.id).filter(
+        Message.team_id == team_id
+    ).order_by(Message.created_at).all()
 
-    return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
+    messages_data = []
+    for message, username in messages:
+        messages_data.append(MessageResponse(
+            id=message.id,
+            team_id=message.team_id,
+            user_id=message.user_id,
+            username=username,
+            content=message.content,
+            created_at=message.created_at
+        ))
+    return messages_data
 
 
 @app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
-async def get_summary_detail(
-    summary_id: int,
-    current_user: User = Depends(get_required_user),
-    db: Session = Depends(get_db)
-):
-    """IDに基づいて特定の要約履歴とその関連コンテンツを取得する"""
-    summary_history = db.query(SummaryHistory).options(
-        joinedload(SummaryHistory.contents)
-    ).filter(SummaryHistory.id == summary_id).first()
-
-    if not summary_history:
-        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
-
-    # 権限チェック
-    is_owner = summary_history.user_id == current_user.id
-    is_team_member = False
-    if summary_history.team_id:
-        membership = db.query(TeamMember).filter(
-            TeamMember.team_id == summary_history.team_id,
-            TeamMember.user_id == current_user.id
-        ).first()
-        if membership:
-            is_team_member = True
-
-    if not is_owner and not is_team_member:
-        raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
-
-    return summary_history
 
 @app.put("/api/summaries/{summary_id}/tags")
 async def update_summary_tags(
