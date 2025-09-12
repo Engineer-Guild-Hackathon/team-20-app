@@ -41,19 +41,8 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     
 
     try {
-      const token = localStorage.getItem('access_token'); // トークンを取得
-      if (!token) { // トークンがない場合はエラー
-        setError('ログインしていません。');
-        setShowError(true);
-        setIsUploading(false);
-        return;
-      }
-
-      const response = await fetch('/api/upload-pdf', {
+      const response = await fetch('http://localhost:8000/api/upload-pdf', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -92,7 +81,6 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       <Button 
         variant="contained" 
         color="secondary"
-        sx={{ backgroundColor: '#f50057' }}
         onClick={handleUpload}
         disabled={isUploading}
         startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUpload />}

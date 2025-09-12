@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Typography, 
@@ -77,7 +77,7 @@ function App() {
         return;
       }
       try {
-        const response = await fetch('/api/users/me', {
+        const response = await fetch('http://localhost:8000/api/users/me', {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -100,29 +100,30 @@ function App() {
     }
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    const fetchHistories = async () => {
-      if (isLoggedIn) {
-        const token = localStorage.getItem('access_token');
-        if (!token) return;
-        try {
-          const response = await fetch('/api/summaries', {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-          if (response.ok) {
-            const data: HistoryItem[] = await response.json();
-            setSummaryHistories(data);
-          } else {
-            console.error('Failed to fetch summary histories');
-            setSummaryHistories([]);
-          }
-        } catch (error) {
-          console.error('Error fetching summary histories:', error);
+  const fetchHistories = useCallback(async () => {
+    if (isLoggedIn) {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      try {
+        const response = await fetch('http://localhost:8000/api/summaries', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data: HistoryItem[] = await response.json();
+          setSummaryHistories(data);
+        } else {
+          console.error('Failed to fetch summary histories');
           setSummaryHistories([]);
         }
+      } catch (error) {
+        console.error('Error fetching summary histories:', error);
+        setSummaryHistories([]);
       }
-    };
-    fetchHistories();
+    }
+  }, [isLoggedIn, setSummaryHistories]);
+
+  useEffect(() => {
+    // fetchHistories(); // この行は削除またはコメントアウト
   }, [isLoggedIn]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
@@ -140,11 +141,11 @@ function App() {
     showSnackbar('ログアウトしました。', 'info');
   };
 
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setSnackbarOpen(true);
-  };
+  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
 
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
@@ -160,7 +161,7 @@ function App() {
     setChatMessages([]);
   };
 
-  const handleHistoryClick = async (item: HistoryItem) => {
+  const handleHistoryClick = useCallback(async (item: HistoryItem) => {
     if (!item.id) return;
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -168,7 +169,7 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`/api/summaries/${item.id}`, {
+      const response = await fetch(`http://localhost:8000/api/summaries/${item.id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('履歴詳細の読み込みに失敗しました。');
@@ -182,7 +183,7 @@ function App() {
       console.error(error);
       showSnackbar(error instanceof Error ? error.message : '不明なエラーです。', 'error');
     }
-  };
+  }, [showSnackbar, navigate, setPdfSummary, setPdfFilename, setPdfSummaryId, setInitialContents]);
 
   const handleMessagesChange = (messages: Message[]) => {
     setChatMessages(messages);
@@ -207,7 +208,7 @@ function App() {
     // まだusernameがnullの場合、APIから取得を試みる
     if (currentUsername === null) {
       try {
-        const response = await fetch('/api/users/me', {
+        const response = await fetch('http://localhost:8000/api/users/me', {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -224,7 +225,7 @@ function App() {
 
     try {
       // 1. 要約を保存して、新しいIDを取得
-      const summaryResponse = await fetch('/api/save-summary', {
+      const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ filename, summary, team_id: teamId, tags: tags }),
@@ -242,7 +243,7 @@ function App() {
 
       // 2. チャット履歴を保存
       if (chatMessages.length > 0) {
-        const chatResponse = await fetch('/api/history-contents', {
+        const chatResponse = await fetch('http://localhost:8000/api/history-contents', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
@@ -279,24 +280,24 @@ function App() {
     }
   };
 
-  const handleUpdateHistoryItem = (updatedItem: HistoryItem) => {
+  const handleUpdateHistoryItem = useCallback((updatedItem: HistoryItem) => {
     setSummaryHistories(prevHistories => 
       prevHistories.map(item => 
         item.id === updatedItem.id ? updatedItem : item
       )
     );
-  };
+  }, [setSummaryHistories]);
 
   return (
     <>
       <Box sx={{ flexGrow: 1 }}>
-        <AppBar position="static" sx={{ backgroundColor: '#1976d2', py: 1 }}>
+        <AppBar position="static" sx={{ py: 1 }}>
           <Container maxWidth="xl">
             <Toolbar sx={{ justifyContent: 'space-between', minHeight: 48 }}>
               <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
                 <Link to="/" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center' }}>
                   {location.pathname !== '/' && <HomeIcon sx={{ mr: 1 }} />}
-                  CogniStudy
+                  <img src="./product_logo.svg" alt="Product Logo" style={{ height: '60px', marginLeft: '8px', filter: 'drop-shadow(0 0 2px white)' }} /> {/* 追加 */}
                 </Link>
               </Typography>
               {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}
@@ -341,7 +342,7 @@ function App() {
               </Box>
             </Container>
           } />
-          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} />} />
+          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} />} />
           <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
         </Routes>
       </Box>

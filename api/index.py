@@ -1,33 +1,43 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
 
-# サーバーディレクトリをパスに追加
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'server'))
+# プロジェクトルートを追加
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+# サーバーディレクトリを追加
+server_path = os.path.join(project_root, 'server')
+sys.path.insert(0, server_path)
 
 try:
-    from main import app
-except ImportError:
+    # サーバーのmain.pyからappをインポート
+    from server.main import app
+    
+    # Vercel用のハンドラーとして設定
+    handler = app
+    
+except ImportError as e:
+    print(f"Import error: {e}")
     # フォールバック用の最小限のアプリ
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    
     app = FastAPI()
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     
     @app.get("/")
     async def root():
-        return {"message": "API is running"}
+        return {"message": "API is running (fallback)"}
     
     @app.get("/health")
     async def health():
         return {"status": "healthy"}
-
-# Vercel用の設定
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 本番では具体的なドメインに変更
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Vercelのハンドラー
-handler = app
+    
+    handler = app
