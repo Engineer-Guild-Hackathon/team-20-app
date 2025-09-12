@@ -333,6 +333,11 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return {"message": "ユーザー登録成功！", "username": new_user.username}
 
+# ミラールート: /register でも受け付ける
+@app.post("/register")
+async def register_alias(request: RegisterRequest, db: Session = Depends(get_db)):
+    return await register(request, db)
+
 @app.post("/api/login")
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     """ユーザーログインエンドポイント"""
@@ -352,6 +357,11 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+# ミラールート: /login でも受け付ける
+@app.post("/login")
+async def login_alias(request: LoginRequest, db: Session = Depends(get_db)):
+    return await login(request, db)
 
 @app.post("/api/teams")
 async def create_team(request: TeamCreateRequest, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
@@ -625,6 +635,14 @@ async def upload_pdf(
     except Exception as e:
         logging.error(f"Error in upload_pdf endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"PDF処理エラー: {str(e)}")
+
+# ミラールート: /upload-pdf でも受け付ける
+@app.post("/upload-pdf")
+async def upload_pdf_alias(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    return await upload_pdf(file, db)
 
 @app.get("/api/hello/{name}")
 async def say_hello(name: str):
