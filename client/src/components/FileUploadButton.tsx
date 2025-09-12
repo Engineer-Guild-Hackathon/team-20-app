@@ -3,7 +3,7 @@ import { Button, CircularProgress, Alert, Snackbar } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 
 interface FileUploadButtonProps {
-  onSummaryGenerated: (summary: string, filename: string, summaryId?: number) => void;
+  onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[]) => void;
 }
 
 const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated }) => {
@@ -38,16 +38,12 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
     const formData = new FormData();
     formData.append('file', file);
 
-    formData.append('save_history', 'false');
+    
 
     try {
-      // Note: We are not setting Content-Type header here.
-      // The browser will automatically set it to multipart/form-data
-      // and include the boundary, which is required for FormData.
       const response = await fetch('http://localhost:8000/api/upload-pdf', {
         method: 'POST',
         body: formData,
-        // Authorization header is not needed for this endpoint as it's handled by get_current_user
       });
 
       if (!response.ok) {
@@ -58,7 +54,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       const result = await response.json();
       
       // Pass the summary_id back to the parent component
-      onSummaryGenerated(result.summary, result.filename, result.summary_id);
+      onSummaryGenerated(result.summary, result.filename, result.summary_id, result.tags);
       
     } catch (error) {
       console.error('Upload error:', error);

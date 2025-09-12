@@ -11,12 +11,13 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 import uuid
 from fastapi.responses import FileResponse
+import re # 追加
 
 # ファイル保存ディレクトリの設定
 UPLOAD_DIRECTORY = "./shared_files"
@@ -52,10 +53,6 @@ async def log_requests(request: Request, call_next):
     
     process_time = time.time() - start_time
     
-    logging.info(
-        f"ip={request.client.host} method={request.method} path={request.url.path} "
-        f"status_code={response.status_code} process_time={process_time:.4f}s"
-    )
     
     return response
 
@@ -173,16 +170,15 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
 
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment # Team, TeamMember, Commentを追加
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from typing import Optional
-
 
 class SaveSummaryRequest(BaseModel):
     filename: str
     summary: str
     team_id: Optional[int] = None # 追加
+    tags: Optional[List[str]] = None # 追加
+
+class TagsUpdateRequest(BaseModel):
+    tags: List[str]
 
 class TeamCreateRequest(BaseModel):
     name: str
@@ -190,6 +186,23 @@ class TeamCreateRequest(BaseModel):
 class CommentCreateRequest(BaseModel):
     summary_id: int
     content: str
+
+class ReactionCreateRequest(BaseModel):
+    reaction_type: str
+
+class ReactionResponse(BaseModel):
+    id: int
+    comment_id: int
+    user_id: int
+    username: str
+    reaction_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 
 class HistoryContentCreateRequest(BaseModel):
@@ -207,6 +220,9 @@ class HistoryContentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 class SummaryHistoryDetailResponse(BaseModel):
     id: int
@@ -219,6 +235,9 @@ class SummaryHistoryDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 class SharedFileResponse(BaseModel):
     id: int
@@ -230,6 +249,9 @@ class SharedFileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
 
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -473,12 +495,10 @@ async def chat(request: ChatRequest):
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(
-    file: UploadFile = File(...), 
-    save_history: str = Form("true"), # boolからstrに変更
-    current_user: Optional[User] = Depends(get_current_user),
+    file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """PDF アップロードと要約生成エンドポイント（任意認証）"""
+    """PDF アップロードと要約生成エンドポイント（認証なし）"""
     try:
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="PDFファイルのみアップロード可能です")
@@ -496,7 +516,7 @@ async def upload_pdf(
             contents=[
                 {
                     'parts': [
-                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点を箇条書きで整理し、わかりやすく説明してください。'},
+                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。タグが生成できない場合でも、必ず `[タグ: なし]` と記述してください。'},
                         {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
                     ]
                 }
@@ -506,31 +526,28 @@ async def upload_pdf(
         logging.info(f"PDF summary generated for file: {file.filename}")
         
         if hasattr(response, 'text') and response.text:
-            summary = response.text
+            full_response_text = response.text
         elif hasattr(response, 'candidates') and response.candidates:
-            summary = response.candidates[0].content.parts[0].text
+            full_response_text = response.candidates[0].content.parts[0].text
         else:
-            summary = "要約の生成に失敗しました"
+            full_response_text = "要約の生成に失敗しました"
         
-        summary_id = None # 初期化
-        # ログインしており、かつ保存オプションが有効な場合のみ履歴を保存
-        if current_user and save_history.lower() == 'true': # 文字列比較に変更
-            new_history = SummaryHistory(
-                user_id=current_user.id,
-                filename=file.filename,
-                summary=summary
-            )
-            db.add(new_history)
-            db.commit()
-            db.refresh(new_history) # idを取得するためにrefresh
-            summary_id = new_history.id # idをセット
-            logging.info(f"Summary history saved for user: {current_user.username} with ID: {summary_id}")
-
+        summary = full_response_text # 初期値はフルレスポンス
+        generated_tags = []
+        
+        # タグを正規表現で抽出
+        tag_match = re.search(r'\[タグ:\s*(.*?)\s*\]', full_response_text)
+        if tag_match:
+            tags_str = tag_match.group(1)
+            generated_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+            # 要約からタグ部分を削除
+            summary = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
+        
         return {
             "filename": file.filename,
             "summary": summary,
             "status": "success",
-            "summary_id": summary_id # レスポンスに追加
+            "tags": generated_tags # 生成されたタグをレスポンスに追加
         }
         
     except HTTPException:
@@ -562,13 +579,13 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                 "created_at": summary.created_at,
                 "team_id": summary.team_id,
                 "username": username, # 自分の要約の作成者名
-                "team_name": team_name # チーム名を追加
+                "team_name": team_name, # チーム名を追加
+                "tags": summary.tags.split(',') if summary.tags else []
             })
 
         # ユーザーが所属するチームのIDを取得
         user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
 
-        logging.info(f"User {current_user.username} is a member of teams: {user_team_ids}")
 
         # 所属チームに共有された要約を取得
         shared_summaries_data = []
@@ -579,10 +596,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
             ).order_by(SummaryHistory.created_at.desc())
             
             shared_summaries_results = shared_summaries_query.all()
-            logging.info(f"Found {len(shared_summaries_results)} shared summaries for user {current_user.username}")
 
             for summary, username, team_name in shared_summaries_results:
-                logging.info(f"Adding shared summary: filename={summary.filename}, username={username}, team_name={team_name}")
                 shared_summaries_data.append({
                     "id": summary.id,
                     "filename": summary.filename,
@@ -590,7 +605,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                     "created_at": summary.created_at,
                     "team_id": summary.team_id,
                     "username": username, # 共有要約の作成者名
-                    "team_name": team_name # チーム名を追加
+                    "team_name": team_name, # チーム名を追加
+                    "tags": summary.tags.split(',') if summary.tags else []
                 })
 
         # 両方のリストを結合して返す
@@ -634,13 +650,88 @@ async def add_comment(request: CommentCreateRequest, current_user: User = Depend
     new_comment = Comment(
         summary_id=request.summary_id,
         user_id=current_user.id,
-        content=request.content
+        content=request.content,
+        created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
     )
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
 
     return {"message": "コメントが追加されました", "comment_id": new_comment.id}
+
+@app.post("/api/comments/{comment_id}/reactions")
+async def add_reaction(
+    comment_id: int,
+    request: ReactionCreateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """コメントにリアクションを追加するエンドポイント"""
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="コメントが見つかりません")
+
+    # ユーザーが要約にアクセスできるか確認（コメント追加時と同じロジック）
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == comment.summary_id).first()
+    if not summary: # Should not happen if comment exists, but for safety
+        raise HTTPException(status_code=404, detail="関連する要約が見つかりません")
+
+    can_access = False
+    if summary.user_id == current_user.id:
+        can_access = True
+    elif summary.team_id:
+        team_membership = db.query(TeamMember).filter(
+            TeamMember.user_id == current_user.id,
+            TeamMember.team_id == summary.team_id
+        ).first()
+        if team_membership:
+            can_access = True
+
+    if not can_access:
+        raise HTTPException(status_code=403, detail="このコメントにリアクションする権限がありません")
+
+    # 同じユーザーが同じリアクションを既にしているか確認
+    existing_reaction = db.query(Reaction).filter(
+        Reaction.comment_id == comment_id,
+        Reaction.user_id == current_user.id,
+        Reaction.reaction_type == request.reaction_type
+    ).first()
+
+    if existing_reaction:
+        raise HTTPException(status_code=400, detail="既に同じリアクションをしています")
+
+    new_reaction = Reaction(
+        comment_id=comment_id,
+        user_id=current_user.id,
+        reaction_type=request.reaction_type
+    )
+    db.add(new_reaction)
+    db.commit()
+    db.refresh(new_reaction)
+
+    return {"message": "リアクションが追加されました", "reaction_id": new_reaction.id}
+
+@app.delete("/api/comments/{comment_id}/reactions")
+async def remove_reaction(
+    comment_id: int,
+    request: ReactionCreateRequest, # Use ReactionCreateRequest to specify reaction_type to remove
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """コメントからリアクションを削除するエンドポイント"""
+    reaction_to_remove = db.query(Reaction).filter(
+        Reaction.comment_id == comment_id,
+        Reaction.user_id == current_user.id,
+        Reaction.reaction_type == request.reaction_type
+    ).first()
+
+    if not reaction_to_remove:
+        raise HTTPException(status_code=404, detail="指定されたリアクションが見つかりません")
+
+    db.delete(reaction_to_remove)
+    db.commit()
+
+    return {"message": "リアクションが削除されました"}
 
 @app.get("/api/summaries/{summary_id}/comments")
 async def get_comments_for_summary(summary_id: int, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
@@ -665,14 +756,41 @@ async def get_comments_for_summary(summary_id: int, current_user: User = Depends
     if not can_access:
         raise HTTPException(status_code=403, detail="この要約のコメントを閲覧する権限がありません")
 
-    comments = db.query(Comment, User).join(User).filter(
+    comments_query = db.query(Comment, User).join(User).filter(
         Comment.summary_id == summary_id
-    ).order_by(Comment.created_at.asc()).all()
+    ).order_by(Comment.created_at.asc())
 
-    comments_data = [
-        {"id": comment.id, "user_id": comment.user_id, "username": user.username, "content": comment.content, "created_at": comment.created_at}
-        for comment, user in comments
-    ]
+    comments_data = []
+    for comment, user in comments_query.all():
+        # 各コメントのリアクションを取得
+        reactions = db.query(Reaction, User).join(User).filter(
+            Reaction.comment_id == comment.id
+        ).all()
+
+        reaction_counts = {}
+        user_reactions = []
+        for reaction, reaction_user in reactions:
+            if reaction.reaction_type not in reaction_counts:
+                reaction_counts[reaction.reaction_type] = 0
+            reaction_counts[reaction.reaction_type] += 1
+            
+            user_reactions.append({
+                "id": reaction.id,
+                "user_id": reaction.user_id,
+                "username": reaction_user.username,
+                "reaction_type": reaction.reaction_type,
+                "created_at": reaction.created_at
+            })
+
+        comments_data.append({
+            "id": comment.id,
+            "user_id": comment.user_id,
+            "username": user.username,
+            "content": comment.content,
+            "created_at": comment.created_at,
+            "reactions": user_reactions, # 全てのリアクション詳細
+            "reaction_counts": reaction_counts # リアクションの種類ごとのカウント
+        })
 
     return comments_data
 
@@ -714,12 +832,13 @@ async def save_summary(
             user_id=current_user.id,
             filename=request.filename,
             summary=request.summary,
-            team_id=request.team_id # team_idを追加
+            team_id=request.team_id,
+            tags=",".join(request.tags) if request.tags else None, # tagsを追加
+            created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
         )
         db.add(new_history)
         db.commit()
         db.refresh(new_history)
-        logging.info(f"Summary saved via /api/save-summary for user: {current_user.username}")
         return {"message": "要約が正常に保存されました", "id": new_history.id}
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
@@ -997,6 +1116,36 @@ async def get_summary_detail(
         raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
 
     return summary_history
+
+@app.put("/api/summaries/{summary_id}/tags")
+async def update_summary_tags(
+    summary_id: int,
+    request: TagsUpdateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """要約履歴のタグを更新するエンドポイント"""
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック：要約の所有者のみがタグを編集できる
+    if summary.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="この要約のタグを編集する権限がありません")
+
+    # タグリストをカンマ区切りの文字列に変換
+    tags_str = ",".join(request.tags)
+    summary.tags = tags_str
+    
+    db.commit()
+    db.refresh(summary)
+
+    return {"message": "タグが正常に更新されました", "summary_id": summary.id, "tags": request.tags}
+
+@app.get("/api/users/me")
+async def read_users_me(current_user: User = Depends(get_required_user)):
+    """現在のユーザー情報を取得するエンドポイント"""
+    return {"username": current_user.username, "id": current_user.id}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
