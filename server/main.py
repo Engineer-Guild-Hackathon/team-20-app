@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message, init_db
+from database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message, init_db
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -19,13 +19,17 @@ import uuid
 from fastapi.responses import FileResponse
 import re # 追加
 
-# ファイル保存ディレクトリの設定
+# ファイル保存ディレクトリの設定（Vercel環境では一時無効化）
 UPLOAD_DIRECTORY = "./shared_files"
+IS_VERCEL = os.getenv("VERCEL") == "1"
 
-# ディレクトリが存在しない場合は作成
-if not os.path.exists(UPLOAD_DIRECTORY):
-    os.makedirs(UPLOAD_DIRECTORY)
-    logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
+# ローカル環境でのみディレクトリ作成
+if not IS_VERCEL:
+    if not os.path.exists(UPLOAD_DIRECTORY):
+        os.makedirs(UPLOAD_DIRECTORY)
+        logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
+else:
+    logging.info("Vercel environment detected - file upload temporarily disabled")
 
 # ログ設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,9 +40,20 @@ app = FastAPI(title="Team 20 API", version="1.0.0")
 init_db()
 
 # CORS設定 - フロントエンドからのアクセスを許可
+allowed_origins = [
+    "http://localhost:3000",  # ローカル開発用
+    "https://team-20-app.vercel.app",  # Vercel本番環境
+    "https://team-20-app-*.vercel.app",  # Vercelプレビュー環境
+]
+
+# 環境変数からフロントエンドURLを取得
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Reactアプリのポート
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -533,6 +548,10 @@ async def upload_pdf(
     db: Session = Depends(get_db)
 ):
     """PDF アップロードと要約生成エンドポイント（認証なし）"""
+    # Vercel環境では一時的にファイルアップロードを無効化
+    if IS_VERCEL:
+        raise HTTPException(status_code=503, detail="ファイルアップロード機能は現在メンテナンス中です")
+    
     try:
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="PDFファイルのみアップロード可能です")

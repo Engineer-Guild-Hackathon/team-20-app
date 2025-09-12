@@ -10,9 +10,12 @@ load_dotenv() # Load environment variables from .env file
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable not set.")
-
-engine = create_engine(DATABASE_URL)
+    # ローカル開発用のSQLiteデータベース
+    DATABASE_URL = "sqlite:///./test.db"
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    # PostgreSQL用の設定
+    engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -24,8 +27,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    username = Column(String(255), unique=True, index=True)
+    hashed_password = Column(String(255))
 
     teams = relationship("TeamMember", back_populates="user")
     summaries = relationship("SummaryHistory", back_populates="user")
@@ -38,7 +41,7 @@ class Team(Base):
     __tablename__ = "teams"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String(255), unique=True, index=True, nullable=False)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -52,7 +55,7 @@ class TeamMember(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), primary_key=True)
-    role = Column(String, nullable=False, default="member") # e.g., "admin", "member"
+    role = Column(String(50), nullable=False, default="member") # e.g., "admin", "member"
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="teams")
@@ -64,7 +67,7 @@ class Comment(Base):
     id = Column(Integer, primary_key=True, index=True)
     summary_id = Column(Integer, ForeignKey("summary_histories.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    content = Column(String, nullable=False)
+    content = Column(String(1000), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     summary = relationship("SummaryHistory", back_populates="comments")
@@ -77,7 +80,7 @@ class Reaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reaction_type = Column(String, nullable=False) # 例: "👍", "❤️", "😂"
+    reaction_type = Column(String(10), nullable=False) # 例: "👍", "❤️", "😂"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     comment = relationship("Comment", back_populates="reactions")
@@ -89,9 +92,9 @@ class SummaryHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
-    filename = Column(String, nullable=False)
-    summary = Column(String, nullable=False)
-    tags = Column(String, nullable=True)
+    filename = Column(String(255), nullable=False)
+    summary = Column(String(1000), nullable=False)
+    tags = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="summaries")
@@ -104,7 +107,7 @@ class HistoryContent(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     summary_history_id = Column(Integer, ForeignKey("summary_histories.id"), nullable=False)
-    section_type = Column(String, nullable=False, index=True)
+    section_type = Column(String(50), nullable=False, index=True)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -115,8 +118,8 @@ class SharedFile(Base):
     __tablename__ = "shared_files"
 
     id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String, nullable=False)
-    filepath = Column(String, unique=True, nullable=False) # サーバー上の保存パス
+    filename = Column(String(255), nullable=False)
+    filepath = Column(String(500), unique=True, nullable=False) # サーバー上の保存パス
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     uploaded_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
