@@ -1,6 +1,6 @@
 import sys
 import os
-from server.main import app as app
+
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
@@ -10,3 +10,5 @@ server_path = os.path.join(project_root, 'server')
 if server_path not in sys.path:
     sys.path.insert(0, server_path)
 
+from server.main import app as app
+handler = app
