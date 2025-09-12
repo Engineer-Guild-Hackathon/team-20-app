@@ -3,25 +3,19 @@
     {
       "src": "client/package.json",
       "use": "@vercel/static-build",
-      "config": { 
-        "outputDirectory": "../client/build",
-        "buildCommand": "cd client && npm run build",
-        "installCommand": "cd client && npm install"
+      "config": {
+        "distDir": "build",
+        "installCommand": "npm ci",
+        "buildCommand": "npm run build"
       }
     },
     {
-      "src": "server/main.py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "server/main.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "client/build/$1"
-    }
+    { "src": "/api/(.*)", "dest": "api/index.py" },
+    { "src": "/(.*)", "dest": "client/build/$1" }
   ]
 }
