@@ -43,6 +43,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
+  const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState<boolean>(false); // New state for create team dialog
 
   interface TabPanelProps {
     children?: React.ReactNode;
@@ -218,6 +219,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
         showSnackbar(`チーム「${data.team_name}」を作成しました！`, 'success');
         setTeamName(''); // フォームをクリア
         fetchMyTeams(); // チームリストを更新
+        setCreateTeamDialogOpen(false); // Close the dialog
       } else {
         const errorData = await response.json();
         showSnackbar(`チーム作成に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
@@ -422,26 +424,39 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   return (
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          チーム管理
-        </Typography>
-
-        <Box sx={{ mt: 4, p: 3, border: '1px solid #ccc', borderRadius: '8px' }}>
-          <Typography variant="h5" component="h2" gutterBottom>
-            新しいチームを作成
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', my: 4 }}>
+          <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0 }}>
+            チーム管理
           </Typography>
-          <TextField
-            label="チーム名"
-            variant="outlined"
-            fullWidth
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <Button variant="contained" color="primary" onClick={handleCreateTeam}>
-            チームを作成
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateTeamDialogOpen(true)}
+          >
+            新しいチームを作成
           </Button>
         </Box>
+
+        <Dialog open={createTeamDialogOpen} onClose={() => setCreateTeamDialogOpen(false)}>
+          <DialogTitle>新しいチームを作成</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="チーム名"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateTeamDialogOpen(false)}>キャンセル</Button>
+            <Button onClick={handleCreateTeam}>作成</Button>
+          </DialogActions>
+        </Dialog>
 
         <Box sx={{ mt: 4 }}>
           <Typography variant="h5" component="h2" gutterBottom>
