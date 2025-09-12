@@ -38,7 +38,7 @@ Base.metadata.create_all(bind=engine)
 # CORS設定 - フロントエンドからのアクセスを許可
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Reactアプリのポート
+    allow_origins=["http://localhost:3000","https://team-20-app-client-7kr4.vercel.app/"],  # Reactアプリのポート
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

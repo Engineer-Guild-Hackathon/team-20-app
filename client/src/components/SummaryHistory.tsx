@@ -68,7 +68,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       return;
     }
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${summaryId}/comments`, {
+      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/summaries/${summaryId}/comments`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -137,7 +137,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     const tagsArray = editingTags.split(',').map(t => t.trim()).filter(t => t);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${selectedHistory.id}/tags`, {
+      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/summaries/${selectedHistory.id}/tags`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -169,7 +169,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/comments', {
+      const response = await fetch('https://team-20-app-client-7kr4.vercel.app/comments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -197,7 +197,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/comments/${commentId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -230,7 +230,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/comments/${commentId}/reactions`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
