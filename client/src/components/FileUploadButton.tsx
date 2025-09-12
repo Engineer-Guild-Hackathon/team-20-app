@@ -49,7 +49,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
         return;
       }
 
-      const response = await fetch('https://team-20-app-client-7kr4.vercel.app/upload-pdf', {
+      const response = await fetch('/api/upload-pdf', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

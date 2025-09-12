@@ -30,7 +30,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
 
   const handleLogin = async () => {
     try {
-      const response = await fetch('https://team-20-app-client-7kr4.vercel.app/login', {
+      const response = await fetch('/api/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

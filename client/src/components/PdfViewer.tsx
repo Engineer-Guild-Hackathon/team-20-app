@@ -58,7 +58,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
       if (!token) return;
 
       try {
-        const response = await fetch('https://team-20-app-client-7kr4.vercel.app/users/me/teams', {
+        const response = await fetch('/api/users/me/teams', {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -89,7 +89,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/summaries/${id}/comments`, {
+      const response = await fetch(`/api/summaries/${id}/comments`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -140,7 +140,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch('https://team-20-app-client-7kr4.vercel.app/comments', {
+      const response = await fetch('/api/comments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +178,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/comments/${commentId}/reactions`, {
+      const response = await fetch(`/api/comments/${commentId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -211,7 +211,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`https://team-20-app-client-7kr4.vercel.app/comments/${commentId}/reactions`, {
+      const response = await fetch(`/api/comments/${commentId}/reactions`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

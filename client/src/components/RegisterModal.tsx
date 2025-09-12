@@ -22,7 +22,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ open, onClose }) => {
 
   const handleRegister = async () => {
     try {
-      const response = await fetch('https://team-20-app-client-7kr4.vercel.app/register', {
+      const response = await fetch('/api/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

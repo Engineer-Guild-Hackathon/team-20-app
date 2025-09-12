@@ -55,7 +55,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, initialCon
     setLoading(true);
 
     try {
-      const response = await fetch('https://team-20-app-client-7kr4.vercel.app/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
