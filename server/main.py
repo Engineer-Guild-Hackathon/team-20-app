@@ -495,11 +495,10 @@ async def chat(request: ChatRequest):
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(
-    file: UploadFile = File(...), 
-    current_user: Optional[User] = Depends(get_current_user),
+    file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """PDF アップロードと要約生成エンドポイント（任意認証）"""
+    """PDF アップロードと要約生成エンドポイント（認証なし）"""
     try:
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="PDFファイルのみアップロード可能です")
