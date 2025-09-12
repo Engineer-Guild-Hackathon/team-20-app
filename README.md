@@ -11,7 +11,7 @@
 ---
 
 ## デモ　/ プレゼン資料
-- デモURL: 
+- デモURL: https://drive.google.com/file/d/1PrUAps-BeSu1anTEaLNQqdW9gRCuqtuI/view?usp=drive_link
 - プレゼンURL：https://docs.google.com/presentation/d/1jvpwPno4Xsct4s_-x2TKKr6VRkYCWcj-/edit?usp=sharing&ouid=116940754129608060449&rtpof=true&sd=true
 
 ---
