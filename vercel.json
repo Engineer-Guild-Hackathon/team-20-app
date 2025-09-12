@@ -1,20 +1,15 @@
 {
-  "version": 2,
+  "functions": {
+    "server/main.py": {
+      "runtime": "python3.9"
+    }
+  },
   "builds": [
     {
       "src": "client/package.json",
       "use": "@vercel/static-build",
       "config": { 
-        "outputDirectory": "build", 
-        "installCommand": "npm install", 
-        "buildCommand": "npm run build" 
-      }
-    },
-    {
-      "src": "server/main.py",
-      "use": "@vercel/python",
-      "config": {
-        "runtime": "python3.12"
+        "outputDirectory": "build"
       }
     }
   ],
