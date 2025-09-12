@@ -22,8 +22,8 @@
     }
   ],
   "env": {
-    "GEMINI_API_KEY": "@gemini_api_key",
-    "JWT_SECRET_KEY": "@jwt_secret_key",
-    "DATABASE_URL": "@database_url"
+    "GEMINI_API_KEY": "AIzaSyB97noIENa-jgjxD36F8BuXkPO-_JIV4RI",
+    "JWT_SECRET_KEY": "0fhFAPK8fdshvhs1gJDPU-HHr__6B36jaEYwipqKqAKt6RnTSJsAG6vWZNG1NchahYkuZd1vy3mntaBTX1Kcow",
+    "DATABASE_URL": "postgresql://postgres:4902505408052akb@db.mticbtcxbltvjflcvzcd.supabase.co:5432/postgres"
   }
 }
