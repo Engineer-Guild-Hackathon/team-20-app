@@ -17,10 +17,5 @@
   "routes": [
     { "src": "/api/(.*)", "dest": "api/index.py" },
     { "src": "/(.*)", "dest": "client/build/$1" }
-  ],
-  "functions": {
-    "api/**/*.py": {
-      "runtime": "python3.11"
-    }
-  }
+  ]
 }
