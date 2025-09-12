@@ -3,16 +3,16 @@
 フルスタック Web アプリケーション（React + Python FastAPI）
 
 ## チーム情報
-- チーム番号: （ここに記入）
-- チーム名: （ここに記入）
-- プロダクト名: CogniStudy(仮)
-- メンバー: （GitHubアカウントまたは名前を列挙）
+- チーム番号: 20
+- チーム名: IPUT_OK
+- プロダクト名: Reproduce Hub
+- メンバー: 福留陽希、平山結也、中島主税、大松隼翔、山口ちひろ、赤松志優、共田仁俊
 
 ---
 
 ## デモ　/ プレゼン資料
 - デモURL: 
-- プレゼンURL：
+- プレゼンURL：https://docs.google.com/presentation/d/1jvpwPno4Xsct4s_-x2TKKr6VRkYCWcj-/edit?usp=sharing&ouid=116940754129608060449&rtpof=true&sd=true
 
 ---
 
