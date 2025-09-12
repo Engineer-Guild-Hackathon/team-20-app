@@ -24,10 +24,5 @@
       "src": "/(.*)",
       "dest": "client/build/$1"
     }
-  ],
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key",
-    "JWT_SECRET_KEY": "@jwt_secret_key",
-    "DATABASE_URL": "@database_url"
-  }
+  ]
 }
