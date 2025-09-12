@@ -59,9 +59,7 @@ CORS 設定:
 Cookie ベースの認証は使わず、Bearer トークン前提のため allow_credentials は False。
 """
 cors_origins = [
-    "https://reproducehub.vercel.app",
-    "https://reproducehub-*.vercel.app",
-    "http://localhost:3000",
+    "https://iputreproducehub.vercel.app"
 ]
 frontend_url = os.getenv("FRONTEND_URL")
 if frontend_url and frontend_url not in cors_origins:
