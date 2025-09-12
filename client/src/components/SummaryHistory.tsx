@@ -268,10 +268,11 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       sx={{
         height: '100%',
         p: 2,
-        border: '1px solid #e0e0e0',
+        border: '1px solid #00bcd4',
         borderRadius: 2,
         display: 'flex',
         flexDirection: 'column',
+        boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -291,6 +292,10 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           }}
           aria-label="history filter"
           size="small"
+          sx={{
+            border: '1px solid #00bcd4', // ボーダーを追加
+            boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)', // シャドウを追加
+          }}
         >
           <ToggleButton value="all" aria-label="all histories">
             すべて
@@ -303,7 +308,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           </ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      <Divider sx={{ mb: 1 }} />
+      <Divider sx={{ mb: 1, borderColor: '#00bcd4' }} />
       <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
         {displayedHistories.length === 0 ? (
           <Typography sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
@@ -313,7 +318,14 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           <List disablePadding>
             {displayedHistories.map((item, index) => (
               <ListItem key={item.id || index} disablePadding>
-                <ListItemButton onClick={() => handleHistoryItemClick(item)}>
+                <ListItemButton
+                  onClick={() => handleHistoryItemClick(item)}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 188, 212, 0.1)', // ホバー時の背景色
+                    },
+                  }}
+                >
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -330,8 +342,8 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                           <Chip
                             label={`チーム共有: ${item.team_name || '不明'} (${item.username || '不明'})`}
                             size="small"
-                            color="info"
-                            sx={{ ml: 1 }}
+                            // color="info" // 削除
+                            sx={{ ml: 1, border: '1px solid #00bcd4' }} // ボーダーを追加
                           />
                         )}
                       </Box>
@@ -341,7 +353,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flexGrow: 1 }}>
                             {item.tags?.map((tag, index) => (
-                              <Chip key={index} label={tag} size="small" />
+                              <Chip key={index} label={tag} size="small" sx={{ border: '1px solid #00bcd4' }} /> // ボーダーを追加
                             ))}
                           </Box>
                           <Typography
@@ -350,7 +362,17 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                             color="text.secondary"
                             sx={{ flexShrink: 0, ml: 1 }}
                           >
-                            {new Date(item.created_at || Date.now()).toLocaleString('ja-JP')}
+                            <>{console.log(item.created_at)}</>
+                            {item.created_at && !isNaN(new Date(item.created_at).getTime())
+                              ? new Intl.DateTimeFormat('ja-JP', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                }).format(new Date(item.created_at))
+                              : '日付不明'}
                           </Typography>
                         </Box>
                       </>
@@ -391,7 +413,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 </Box>
               )}
             </Box>
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
             <Typography variant="subtitle2" gutterBottom>要約</Typography>
             <DialogContentText
               component="div"
@@ -399,7 +421,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 whiteSpace: 'pre-wrap',
                 maxHeight: '30vh', // 変更
                 overflowY: 'auto',
-                border: '1px solid #e0e0e0', // 枠線
+                border: '1px solid #00bcd4', // 枠線
                 borderRadius: 1, // 角丸
                 p: 2, // パディング
                 mt: 1, // 上マージン (必要であれば)
@@ -408,19 +430,29 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
               <ReactMarkdown>{selectedHistory.summary}</ReactMarkdown>
             </DialogContentText>
 
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
 
             <Typography variant="subtitle2" gutterBottom>コメント</Typography>
-            <Box sx={{ maxHeight: '30vh', overflowY: 'auto', mb: 2, border: '1px solid #e0e0e0', borderRadius: 1, p: 1 }}>
+            <Box sx={{ maxHeight: '30vh', overflowY: 'auto', mb: 2, border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
               {comments.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>コメントはありません。</Typography>
               ) : (
                 <List dense>
                   {comments.map((comment) => (
-                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
+                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #00bcd4', pb: 1, mb: 1 }}>
                       <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" color="text.secondary">
-                          {comment.username} - {new Date(comment.created_at).toLocaleString('ja-JP')}
+                            <>{console.log("====" + comment.created_at)}</>
+                          {comment.username} - {comment.created_at && !isNaN(new Date(comment.created_at + "Z").getTime())
+                            ? new Intl.DateTimeFormat('ja-JP', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                              }).format(new Date(comment.created_at + "Z"))
+                            : '日付不明'}
                         </Typography>
                       </Box>
                       <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>

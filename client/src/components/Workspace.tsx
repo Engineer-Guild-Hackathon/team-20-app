@@ -6,7 +6,7 @@ import 'prismjs/components/prism-python';
 import 'prismjs/themes/prism.css'; // You can choose a different theme
 
 const Workspace: React.FC = () => {
-  const [pythonCode, setPythonCode] = useState<string>('print("Hello from PyScript!")');
+  const [pythonCode, setPythonCode] = useState<string>('print("Input your code here!")');
   const [output, setOutput] = useState<string>('');
 
   const handleRunCode = async () => {
@@ -67,23 +67,31 @@ ${pythonCode}
     <Paper sx={{
         height: '100%',
         p: 2,
-        border: '1px solid #e0e0e0',
+        border: '1px solid #00bcd4',
         borderRadius: 2,
         display: 'flex',
-        flexDirection: 'column'
+                flexDirection: 'column',
+        boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)'
       }}
       >
       <Typography variant="h6" gutterBottom>Python Workspace</Typography>
-      <Box sx={{ mb: 2, border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden' }}>
+      <Box sx={{
+          mb: 2,
+          border: '1px solid #00bcd4',
+          borderRadius: '4px',
+          overflow: 'hidden', // Boxのスクロールを無効化
+          height: '400px', // 固定の高さを設定
+        }}>
         <Editor
           value={pythonCode}
           onValueChange={setPythonCode}
           highlight={code => highlight(code, languages.python, 'python')}
           padding={10}
-          style={{
+                    style={{
             fontFamily: '"Fira code", "Fira Mono", monospace',
             fontSize: 14,
-            minHeight: '200px',
+                        height: '100%', // Boxの高さに合わせる
+            overflowY: 'auto', // Editor自身がスクロールを管理
           }}
         />
       </Box>
@@ -100,12 +108,13 @@ ${pythonCode}
         sx={{
           flexGrow: 1,
           p: 2,
-          border: '1px solid #ccc',
+          border: '1px solid #00bcd4', // ボーダー色をサイバーチックに
           borderRadius: '4px',
-          backgroundColor: '#f5f5f5',
+                    backgroundColor: '#1a1a2e', // 背景色をダークに
           overflow: 'auto',
           fontFamily: 'monospace',
           whiteSpace: 'pre-wrap',
+          minHeight: '100px', // 最小高さを設定 (例: 100px)
         }}
       >
         {output || 'No output yet.'}

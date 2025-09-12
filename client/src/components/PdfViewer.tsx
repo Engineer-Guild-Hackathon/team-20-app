@@ -241,10 +241,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
       sx={{ 
         height: '100%', 
         p: 2,
-        border: '1px solid #e0e0e0',
+        border: '1px solid #00bcd4',
         borderRadius: 2,
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -266,7 +267,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
         </Box>
       )}
       
-      <Divider sx={{ mb: 2 }} />
+      <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
       
       {summary ? (
         <Box sx={{ flex: 1, overflow: 'auto' }}>
@@ -313,14 +314,14 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
 
           {/* コメントセクション */}
           {summaryId && isLoggedIn && (
-            <Box sx={{ mt: 4, p: 2, border: '1px solid #eee', borderRadius: '8px' }}>
+            <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <CommentIcon color="action" fontSize="small" />
                 <Typography variant="h6" component="h3">
                   コメント
                 </Typography>
               </Box>
-              <Divider sx={{ mb: 2 }} />
+              <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
               {loadingComments ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                   <CircularProgress size={20} />
@@ -333,7 +334,14 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
                     <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
                       <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" color="text.secondary">
-                          {comment.username} - {new Date(comment.created_at).toLocaleString('ja-JP')}
+                          {comment.username} - {new Intl.DateTimeFormat('ja-JP', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          }).format(new Date(comment.created_at + "Z"))}
                         </Typography>
                       </Box>
                       <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>

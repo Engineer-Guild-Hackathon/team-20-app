@@ -54,7 +54,14 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ open, onClose }) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose}>
+    <Dialog open={open} onClose={onClose}
+      PaperProps={{
+        sx: {
+          border: '1px solid #00bcd4', // サイバーチックなボーダー色に変更
+          boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)', // より強調されたシャドウ
+        }
+      }}
+    >
       <DialogTitle>新規登録</DialogTitle>
       <DialogContent>
         {message && (
@@ -68,7 +75,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ open, onClose }) => {
           label="ユーザー名"
           type="text"
           fullWidth
-          variant="standard"
+          variant="outlined"
           value={username}
           onChange={(e) => {
             setUsername(e.target.value);
@@ -80,7 +87,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ open, onClose }) => {
           label="パスワード"
           type="password"
           fullWidth
-          variant="standard"
+          variant="outlined"
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);
