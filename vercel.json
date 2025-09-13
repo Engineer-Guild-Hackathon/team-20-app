@@ -3,19 +3,34 @@
     {
       "src": "client/package.json",
       "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build",
-        "installCommand": "npm ci",
-        "buildCommand": "npm run build"
-      }
+      "config": { "distDir": "build" }
     },
     {
       "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
-    "routes": [
-      { "src": "/api/(.*)", "dest": "api/index.py" },
-      { "src": "/(.*)", "dest": "client/build/$1" }
-    ]
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/index.py"
+    },
+    {
+      "src": "/static/(.*)",
+      "headers": { "cache-control": "s-maxage=31536000,immutable" },
+      "dest": "client/build/static/$1"
+    },
+    {
+      "src": "/favicon.ico",
+      "dest": "client/build/favicon.ico"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "client/build/manifest.json"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "client/build/index.html"
+    }
+  ]
 }

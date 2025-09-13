@@ -53,23 +53,22 @@ init_db()
 
 """
 CORS 設定:
-- 固定ドメイン: https://reproducehub.vercel.app
-- プレビュー:   https://reproducehub-*.vercel.app
-- 開発:         http://localhost:3000
-Cookie ベースの認証は使わず、Bearer トークン前提のため allow_credentials は False。
+Vercelのデプロイ環境（本番・プレビュー）およびローカル開発環境からのアクセスを許可します。
 """
-cors_origins = [
-    "https://iputreproducehub.vercel.app"
+origins = [
+    "https://iputreproducehub.vercel.app", # Vercelの本番URL
+    "http://localhost:3000",             # ローカル開発環境
 ]
-frontend_url = os.getenv("FRONTEND_URL")
-if frontend_url and frontend_url not in cors_origins:
-    cors_origins.append(frontend_url)
-cors_allow_credentials = False
+
+# Vercelのプレビューデプロイ用の正規表現
+# 例: https://iputreproducehub-git-develop-your-team.vercel.app
+preview_origin_regex = r"https://iputreproducehub-.*\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=cors_allow_credentials,
+    allow_origins=origins,
+    allow_origin_regex=preview_origin_regex,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
