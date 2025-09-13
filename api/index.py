@@ -1,14 +1,19 @@
-import sys
-import os
+from fastapi import FastAPI
+import logging
 
+# Vercelでログが出力されるように設定
+logging.basicConfig(level=logging.INFO)
 
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+app = FastAPI()
 
-server_path = os.path.join(project_root, 'server')
-if server_path not in sys.path:
-    sys.path.insert(0, server_path)
+@app.get("/api/test")
+def read_root():
+    """
+    テスト用のエンドポイント。
+    呼び出されるとログを記録し、JSONを返す。
+    """
+    logging.info("Test endpoint was called successfully!")
+    return {"message": "バックエンドは正常に動作しています！"}
 
-from server.main import app as app
+# VercelがAPIリクエストを処理するために参照する変数
 handler = app
