@@ -35,6 +35,7 @@
 
 ## プロジェクト構造
 
+```
 team-20-app/
 ├── client/                 # フロントエンド (React + TypeScript)
 │   ├── src/               # Reactソースコード
