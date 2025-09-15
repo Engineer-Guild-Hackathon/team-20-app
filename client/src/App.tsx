@@ -180,6 +180,20 @@ function App() {
       setPdfFilename(data.filename);
       setPdfSummaryId(data.id);
       setInitialContents(data.contents);
+
+      // AI Assistantのチャット履歴を抽出して設定
+      const aiChatContent = data.contents?.find((c: HistoryContent) => c.section_type === 'ai_chat');
+      if (aiChatContent && aiChatContent.content) {
+        try {
+          const parsedMessages: Message[] = JSON.parse(aiChatContent.content);
+          setChatMessages(parsedMessages);
+        } catch (e) {
+          console.error("Failed to parse chat history from initialContents:", e);
+          setChatMessages([]);
+        }
+      } else {
+        setChatMessages([]);
+      }
       navigate('/');
     } catch (error) {
       console.error(error);
@@ -230,7 +244,14 @@ function App() {
       const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ filename, summary, team_id: teamId, tags: tags, original_file_path: pdfFilePath }),
+          body: JSON.stringify({
+            filename,
+            summary,
+            team_id: teamId,
+            tags: tags,
+            original_file_path: pdfFilePath,
+            ai_chat_history: chatMessages.length > 0 ? JSON.stringify(chatMessages) : undefined, // チャット履歴を追加
+          }),
       });
 
       if (!summaryResponse.ok) {
@@ -242,24 +263,6 @@ function App() {
       const summaryData = await summaryResponse.json();
       const newSummaryId = summaryData.id;
       setPdfSummaryId(newSummaryId);
-
-      // 2. チャット履歴を保存
-      if (chatMessages.length > 0) {
-        const chatResponse = await fetch('http://localhost:8000/api/history-contents', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            summary_history_id: newSummaryId,
-            section_type: 'ai_chat',
-            content: JSON.stringify(chatMessages),
-          }),
-        });
-
-        if (!chatResponse.ok) {
-          const errorData = await chatResponse.json();
-          throw new Error(`チャット履歴の保存に失敗しました: ${errorData.detail || '不明なエラー'}`);
-        }
-      }
 
       showSnackbar('要約とチャット履歴を保存しました！', 'success');
       

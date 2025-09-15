@@ -22,7 +22,7 @@ export interface Message {
   text: string;
 }
 
-interface HistoryContent {
+export interface HistoryContent {
   id: number;
   summary_history_id: number;
   section_type: string;

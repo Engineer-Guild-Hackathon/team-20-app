@@ -27,6 +27,7 @@ import {
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 import AddReactionIcon from '@mui/icons-material/AddReaction'; // 追加
+import AiAssistant, { Message, HistoryContent } from './AiAssistant'; // AiAssistantと関連する型をインポート
 
 // App.tsxから渡されるHistoryItemの型を再利用
 interface HistoryItem {
@@ -38,6 +39,7 @@ interface HistoryItem {
   username?: string; // 追加
   team_name?: string; // 追加
   tags?: string[]; // 追加
+  contents?: HistoryContent[]; // 追加
 }
 
 interface SummaryHistoryProps {
@@ -521,6 +523,21 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 投稿
               </Button>
             </Box>
+
+            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
+
+            <Typography variant="subtitle2" gutterBottom>AI Assistant チャット履歴</Typography>
+            <Box sx={{ maxHeight: '40vh', overflowY: 'auto', mb: 2, border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
+              {selectedHistory.contents && selectedHistory.contents.some(c => c.section_type === 'ai_chat') ? (
+                <AiAssistant
+                  initialContents={selectedHistory.contents}
+                  onMessagesChange={() => {}} // モーダル内ではチャットしないのでダミー関数
+                  // pdfSummaryContentとsummaryIdは不要
+                />
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>AI Assistant とのチャット履歴はありません。</Typography>
+              )}
+            </Box>
           </DialogContent>
           <DialogActions>
             {isEditingTags ? (
@@ -529,20 +546,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 <Button onClick={handleSaveTags} variant="contained">保存</Button>
               </>
             ) : (
-              <>
-                <Button onClick={handleClose}>閉じる</Button>
-                <Button
-                  onClick={() => {
-                    if (selectedHistory) {
-                      onHistoryClick(selectedHistory);
-                    }
-                    handleClose();
-                  }}
-                  variant="contained"
-                >
-                  表示
-                </Button>
-              </>
+              <Button onClick={handleClose}>閉じる</Button>
             )}
           </DialogActions>
         </Dialog>

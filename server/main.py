@@ -1,5 +1,6 @@
 import logging
 import time
+import json
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -191,6 +192,7 @@ class SaveSummaryRequest(BaseModel):
     team_id: Optional[int] = None # 追加
     tags: Optional[List[str]] = None # 追加
     original_file_path: Optional[str] = None # PDFファイルパス
+    ai_chat_history: Optional[str] = None # 追加: AI Assistantのチャット履歴 (JSON文字列)
 
 class TagsUpdateRequest(BaseModel):
     tags: List[str]
@@ -944,6 +946,29 @@ async def save_summary(
         db.add(new_history)
         db.commit()
         db.refresh(new_history)
+
+        # AI Assistantのチャット履歴をHistoryContentとして保存
+        if request.ai_chat_history:
+            try:
+                # ai_chat_history は JSON 文字列として渡されることを想定
+                chat_content_data = json.loads(request.ai_chat_history)
+                
+                new_chat_history_content = HistoryContent(
+                    summary_history_id=new_history.id,
+                    section_type='ai_chat',
+                    content=json.dumps(chat_content_data), # JSON文字列として保存
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                db.add(new_chat_history_content)
+                db.commit()
+                db.refresh(new_chat_history_content)
+                logging.info(f"AI chat history saved for summary_id {new_history.id}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to decode ai_chat_history JSON: {e}")
+            except Exception as e:
+                logging.error(f"Error saving AI chat history: {e}")
+
         return {"message": "要約が正常に保存されました", "id": new_history.id}
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
