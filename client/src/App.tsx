@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Typography, 
-  Container, 
-  Box, 
-  AppBar, 
+import {
+  Typography,
+  Container,
+  Box,
+  AppBar,
   Toolbar,
   IconButton,
   Menu,
   MenuItem,
   Snackbar,
-  Alert
+  Alert,
+  Button
 } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -33,6 +34,7 @@ interface HistoryItem {
   username?: string;
   team_name?: string;
   tags?: string[]; // 追加
+  chat_history_id?: number; // チャット履歴IDを追加
 }
 
 interface HistoryContent {
@@ -46,14 +48,73 @@ interface HistoryContent {
 
 function App() {
   const location = useLocation();
-  const [pdfSummary, setPdfSummary] = useState<string>('');
-  const [pdfFilename, setPdfFilename] = useState<string>('');
-  const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
-  const [pdfTags, setPdfTags] = useState<string[]>([]); // 追加
-  const [pdfFilePath, setPdfFilePath] = useState<string>(''); // PDFファイルパス追加
+  const [pdfSummary, setPdfSummary] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('currentPdfSummary') || '';
+    } catch (e) {
+      console.error('Failed to restore PDF summary from sessionStorage:', e);
+      return '';
+    }
+  });
+  const [pdfFilename, setPdfFilename] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('currentPdfFilename') || '';
+    } catch (e) {
+      console.error('Failed to restore PDF filename from sessionStorage:', e);
+      return '';
+    }
+  });
+  const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(() => {
+    try {
+      const saved = sessionStorage.getItem('currentPdfSummaryId');
+      return saved ? parseInt(saved) : undefined;
+    } catch (e) {
+      console.error('Failed to restore PDF summary ID from sessionStorage:', e);
+      return undefined;
+    }
+  });
+  const [pdfTags, setPdfTags] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('currentPdfTags');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Failed to restore PDF tags from sessionStorage:', e);
+      return [];
+    }
+  });
+  const [pdfFilePath, setPdfFilePath] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('currentPdfFilePath') || '';
+    } catch (e) {
+      console.error('Failed to restore PDF file path from sessionStorage:', e);
+      return '';
+    }
+  });
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
-  const [initialContents, setInitialContents] = useState<HistoryContent[] | undefined>(undefined);
-  const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [viewMode, setViewMode] = useState<'new' | 'history' | 'current'>(() => {
+    // sessionStorage から復元、チャットメッセージがあればcurrentモードに
+    try {
+      const savedMessages = sessionStorage.getItem('currentChatMessages');
+      if (savedMessages) {
+        const messages = JSON.parse(savedMessages);
+        return messages.length > 0 ? 'current' : 'new';
+      }
+    } catch (e) {
+      console.error('Failed to restore viewMode from sessionStorage:', e);
+    }
+    return 'new';
+  });
+  const [historicalContents, setHistoricalContents] = useState<HistoryContent[] | undefined>(undefined);
+  const [chatMessages, setChatMessages] = useState<Message[]>(() => {
+    // sessionStorage から初期値を復元
+    try {
+      const saved = sessionStorage.getItem('currentChatMessages');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Failed to restore chat messages from sessionStorage:', e);
+      return [];
+    }
+  });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -140,6 +201,18 @@ function App() {
     setIsLoggedIn(false);
     handleCloseMenu();
     showSnackbar('ログアウトしました。', 'info');
+
+    // ログアウト時は作業データもクリア（オプション）
+    try {
+      sessionStorage.removeItem('currentPdfSummary');
+      sessionStorage.removeItem('currentPdfFilename');
+      sessionStorage.removeItem('currentPdfSummaryId');
+      sessionStorage.removeItem('currentPdfTags');
+      sessionStorage.removeItem('currentPdfFilePath');
+      sessionStorage.removeItem('currentChatMessages');
+    } catch (e) {
+      console.error('Failed to clear session data on logout:', e);
+    }
   };
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
@@ -159,8 +232,32 @@ function App() {
     setPdfSummaryId(summaryId);
     setPdfTags(tags || []); // 追加
     setPdfFilePath(filePath || ''); // ファイルパス追加
-    setInitialContents(undefined);
+
+    // sessionStorage に PDF 関連データを保存
+    try {
+      sessionStorage.setItem('currentPdfSummary', summary);
+      sessionStorage.setItem('currentPdfFilename', filename);
+      if (summaryId) {
+        sessionStorage.setItem('currentPdfSummaryId', summaryId.toString());
+      } else {
+        sessionStorage.removeItem('currentPdfSummaryId');
+      }
+      sessionStorage.setItem('currentPdfTags', JSON.stringify(tags || []));
+      sessionStorage.setItem('currentPdfFilePath', filePath || '');
+    } catch (e) {
+      console.error('Failed to save PDF data to sessionStorage:', e);
+    }
+
+    // 新規モードに設定
+    setViewMode('new');
+    setHistoricalContents(undefined);
     setChatMessages([]);
+    // チャットメッセージのみクリア
+    try {
+      sessionStorage.removeItem('currentChatMessages');
+    } catch (e) {
+      console.error('Failed to clear chat messages from sessionStorage:', e);
+    }
   };
 
   const handleHistoryClick = useCallback(async (item: HistoryItem) => {
@@ -176,34 +273,53 @@ function App() {
       });
       if (!response.ok) throw new Error('履歴詳細の読み込みに失敗しました。');
       const data = await response.json();
+
+      // 基本情報の設定
       setPdfSummary(data.summary);
       setPdfFilename(data.filename);
       setPdfSummaryId(data.id);
-      setInitialContents(data.contents);
 
-      // AI Assistantのチャット履歴を抽出して設定
-      const aiChatContent = data.contents?.find((c: HistoryContent) => c.section_type === 'ai_chat');
-      if (aiChatContent && aiChatContent.content) {
-        try {
-          const parsedMessages: Message[] = JSON.parse(aiChatContent.content);
-          setChatMessages(parsedMessages);
-        } catch (e) {
-          console.error("Failed to parse chat history from initialContents:", e);
-          setChatMessages([]);
+      // sessionStorage に履歴データを保存（表示内容として）
+      try {
+        sessionStorage.setItem('currentPdfSummary', data.summary);
+        sessionStorage.setItem('currentPdfFilename', data.filename);
+        sessionStorage.setItem('currentPdfSummaryId', data.id.toString());
+        // 履歴のタグ情報があれば保存
+        if (data.tags) {
+          sessionStorage.setItem('currentPdfTags', JSON.stringify(data.tags.split(',').filter((t: string) => t.trim())));
         }
-      } else {
-        setChatMessages([]);
+      } catch (e) {
+        console.error('Failed to save history PDF data to sessionStorage:', e);
       }
+
+      // 履歴表示モードに切り替え
+      setViewMode('history');
+      setHistoricalContents(data.contents);
+
       navigate('/');
     } catch (error) {
       console.error(error);
       showSnackbar(error instanceof Error ? error.message : '不明なエラーです。', 'error');
     }
-  }, [showSnackbar, navigate, setPdfSummary, setPdfFilename, setPdfSummaryId, setInitialContents]);
+  }, [showSnackbar, navigate, setPdfSummary, setPdfFilename, setPdfSummaryId]);
 
   const handleMessagesChange = (messages: Message[]) => {
     setChatMessages(messages);
+    // sessionStorage に保存
+    try {
+      sessionStorage.setItem('currentChatMessages', JSON.stringify(messages));
+    } catch (e) {
+      console.error('Failed to save chat messages to sessionStorage:', e);
+    }
+    // チャットが開始されたら current モードに切り替え
+    if (messages.length > 0 && viewMode === 'new') {
+      setViewMode('current');
+    }
   };
+
+  const handleExitHistoryView = useCallback(() => {
+    setViewMode('current'); // 現在進行中モードに切り替え
+  }, []);
 
   const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null) => {
     if (!isLoggedIn) {
@@ -330,16 +446,28 @@ function App() {
         <Routes>
           <Route path="/" element={
             <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
+              {viewMode === 'history' && (
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                  <Typography variant="body1" sx={{ display: 'inline', mr: 2 }}>
+                    履歴を表示中: {pdfFilename}
+                  </Typography>
+                  <Button variant="outlined" size="small" onClick={handleExitHistoryView}>
+                    現在進行中のチャットに戻る
+                  </Button>
+                </Box>
+              )}
               <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                 <Box sx={{ flex: 1 }}>
                   <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} tags={pdfTags} username={username} />
                 </Box>
                 <Box sx={{ flex: 1 }}>
-                  <AiAssistant 
-                    pdfSummaryContent={pdfSummary} 
+                  <AiAssistant
+                    pdfSummaryContent={pdfSummary}
                     summaryId={pdfSummaryId}
-                    initialContents={initialContents} 
-                    onMessagesChange={handleMessagesChange} 
+                    viewMode={viewMode}
+                    historicalContents={historicalContents}
+                    currentMessages={chatMessages}
+                    onMessagesChange={handleMessagesChange}
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>

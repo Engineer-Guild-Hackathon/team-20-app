@@ -46,6 +46,11 @@ try:
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE summary_histories ADD COLUMN original_file_path STRING"))
             conn.commit()
+    if 'chat_history_id' not in columns:
+        logging.info("Adding missing column 'chat_history_id' to summary_histories table")
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN chat_history_id INTEGER"))
+            conn.commit()
 except Exception as e:
     logging.warning(f"Failed to ensure DB schema for summary_histories: {e}")
 
@@ -250,6 +255,7 @@ class SummaryListItemResponse(BaseModel):
     username: Optional[str] = None
     team_name: Optional[str] = None
     tags: List[str] = []
+    chat_history_id: Optional[int] = None  # チャット履歴IDを追加
 
     class Config:
         from_attributes = True
@@ -680,7 +686,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                 team_id=summary.team_id,
                 username=username,
                 team_name=team_name,
-                tags=summary.tags.split(',') if summary.tags else []
+                tags=summary.tags.split(',') if summary.tags else [],
+                chat_history_id=summary.chat_history_id
             ))
 
         # ユーザーが所属するチームのIDを取得
@@ -712,7 +719,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                     team_id=summary.team_id,
                     username=username,
                     team_name=team_name,
-                    tags=summary.tags.split(',') if summary.tags else []
+                    tags=summary.tags.split(',') if summary.tags else [],
+                    chat_history_id=summary.chat_history_id
                 ))
 
         # 両方のリストを結合して返す
@@ -934,6 +942,7 @@ async def save_summary(
             if not team_membership:
                 raise HTTPException(status_code=403, detail="指定されたチームに要約を保存する権限がありません")
 
+        # まず要約履歴を作成（chat_history_id は後で設定）
         new_history = SummaryHistory(
             user_id=current_user.id,
             filename=request.filename,
@@ -947,12 +956,13 @@ async def save_summary(
         db.commit()
         db.refresh(new_history)
 
-        # AI Assistantのチャット履歴をHistoryContentとして保存
+        # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+        chat_history_content_id = None
         if request.ai_chat_history:
             try:
                 # ai_chat_history は JSON 文字列として渡されることを想定
                 chat_content_data = json.loads(request.ai_chat_history)
-                
+
                 new_chat_history_content = HistoryContent(
                     summary_history_id=new_history.id,
                     section_type='ai_chat',
@@ -963,7 +973,13 @@ async def save_summary(
                 db.add(new_chat_history_content)
                 db.commit()
                 db.refresh(new_chat_history_content)
-                logging.info(f"AI chat history saved for summary_id {new_history.id}")
+
+                # SummaryHistoryにチャット履歴のIDを設定
+                chat_history_content_id = new_chat_history_content.id
+                new_history.chat_history_id = chat_history_content_id
+                db.commit()
+
+                logging.info(f"AI chat history saved for summary_id {new_history.id} with content_id {chat_history_content_id}")
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to decode ai_chat_history JSON: {e}")
             except Exception as e:
@@ -1289,6 +1305,45 @@ async def update_summary_tags(
 async def read_users_me(current_user: User = Depends(get_required_user)):
     """現在のユーザー情報を取得するエンドポイント"""
     return {"username": current_user.username, "id": current_user.id}
+
+@app.get("/api/history-contents/{content_id}")
+async def get_history_content_by_id(
+    content_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """IDに基づいて履歴コンテンツを取得するエンドポイント"""
+    history_content = db.query(HistoryContent).filter(HistoryContent.id == content_id).first()
+
+    if not history_content:
+        raise HTTPException(status_code=404, detail="履歴コンテンツが見つかりません")
+
+    # 権限チェック：関連する要約履歴の所有者またはチームメンバーかを確認
+    summary_history = db.query(SummaryHistory).filter(SummaryHistory.id == history_content.summary_history_id).first()
+    if not summary_history:
+        raise HTTPException(status_code=404, detail="関連する要約履歴が見つかりません")
+
+    is_owner = summary_history.user_id == current_user.id
+    is_team_member = False
+    if summary_history.team_id:
+        membership = db.query(TeamMember).filter(
+            TeamMember.team_id == summary_history.team_id,
+            TeamMember.user_id == current_user.id
+        ).first()
+        if membership:
+            is_team_member = True
+
+    if not is_owner and not is_team_member:
+        raise HTTPException(status_code=403, detail="この履歴コンテンツを閲覧する権限がありません")
+
+    return HistoryContentResponse(
+        id=history_content.id,
+        summary_history_id=history_content.summary_history_id,
+        section_type=history_content.section_type,
+        content=history_content.content,
+        created_at=history_content.created_at,
+        updated_at=history_content.updated_at
+    )
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

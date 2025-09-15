@@ -82,6 +82,7 @@ class SummaryHistory(Base):
     summary = Column(String, nullable=False)
     tags = Column(String, nullable=True)
     original_file_path = Column(String, nullable=True)  # PDFファイルの保存パス
+    chat_history_id = Column(Integer, nullable=True)  # AI チャット履歴への参照（外部キー制約なし）
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="summaries")

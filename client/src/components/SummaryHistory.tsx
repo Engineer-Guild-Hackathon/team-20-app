@@ -40,6 +40,7 @@ interface HistoryItem {
   team_name?: string; // 追加
   tags?: string[]; // 追加
   contents?: HistoryContent[]; // 追加
+  chat_history_id?: number; // チャット履歴IDを追加
 }
 
 interface SummaryHistoryProps {
@@ -47,6 +48,119 @@ interface SummaryHistoryProps {
   onHistoryClick: (item: HistoryItem) => void;
   onUpdateHistory: (updatedItem: HistoryItem) => void;
 }
+
+// チャット履歴表示用のコンポーネント
+const ChatHistoryDisplay: React.FC<{ chatHistoryId?: number }> = ({ chatHistoryId }) => {
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchChatHistory = async () => {
+      if (!chatHistoryId) {
+        setChatMessages([]);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setError('認証情報がありません');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`http://localhost:8000/api/history-contents/${chatHistoryId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          throw new Error('チャット履歴の読み込みに失敗しました');
+        }
+
+        const data = await response.json();
+        if (data.content) {
+          const messages = JSON.parse(data.content);
+          setChatMessages(messages);
+        } else {
+          setChatMessages([]);
+        }
+      } catch (err) {
+        console.error('Error fetching chat history:', err);
+        setError(err instanceof Error ? err.message : 'チャット履歴の読み込みに失敗しました');
+        setChatMessages([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChatHistory();
+  }, [chatHistoryId]);
+
+  if (loading) {
+    return <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>チャット履歴を読み込み中...</Typography>;
+  }
+
+  if (error) {
+    return <Typography variant="body2" color="error" sx={{ p: 1 }}>{error}</Typography>;
+  }
+
+  if (!chatHistoryId || chatMessages.length === 0) {
+    return <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>AI Assistant とのチャット履歴はありません。</Typography>;
+  }
+
+  return (
+    <List>
+      {chatMessages.map((msg: Message, index: number) => (
+        <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start', px: 0 }}>
+          <Paper
+            elevation={2}
+            sx={{
+              p: 1.5,
+              bgcolor: msg.sender === 'user' ? 'primary.main' : 'background.paper',
+              color: msg.sender === 'user' ? 'primary.contrastText' : 'text.primary',
+              maxWidth: '80%',
+              border: '1px solid #00bcd4',
+              boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)',
+            }}
+          >
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p style={{ margin: 0 }}>{children}</p>,
+                pre: ({ children }) => (
+                  <pre style={{
+                    backgroundColor: '#1a1a2e',
+                    color: '#e0e0e0',
+                    border: '1px solid #00bcd4',
+                    borderRadius: '4px',
+                    padding: '10px',
+                    overflowX: 'auto',
+                    boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)',
+                    whiteSpace: "break-spaces"
+                  }}>
+                    {children}
+                  </pre>
+                ),
+                code: ({ children }) => (
+                  <code style={{
+                    fontFamily: '"Share Tech Mono", monospace',
+                    fontSize: '0.9em',
+                  }}>
+                    {children}
+                  </code>
+                ),
+              }}>
+              {msg.text}
+            </ReactMarkdown>
+          </Paper>
+        </ListItem>
+      ))}
+    </List>
+  );
+};
 
 const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick, onUpdateHistory }) => {
   const [filter, setFilter] = useState('all');
@@ -528,15 +642,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
 
             <Typography variant="subtitle2" gutterBottom>AI Assistant チャット履歴</Typography>
             <Box sx={{ maxHeight: '40vh', overflowY: 'auto', mb: 2, border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
-              {selectedHistory.contents && selectedHistory.contents.some(c => c.section_type === 'ai_chat') ? (
-                <AiAssistant
-                  initialContents={selectedHistory.contents}
-                  onMessagesChange={() => {}} // モーダル内ではチャットしないのでダミー関数
-                  // pdfSummaryContentとsummaryIdは不要
-                />
-              ) : (
-                <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>AI Assistant とのチャット履歴はありません。</Typography>
-              )}
+              <ChatHistoryDisplay chatHistoryId={selectedHistory.chat_history_id} />
             </Box>
           </DialogContent>
           <DialogActions>
