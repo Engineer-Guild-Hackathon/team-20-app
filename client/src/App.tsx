@@ -418,7 +418,7 @@ function App() {
               <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
                 <Link to="/" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center' }}>
                   {location.pathname !== '/' && <HomeIcon sx={{ mr: 1 }} />}
-                  <img src="./product_logo.svg" alt="Product Logo" style={{ height: '60px', marginLeft: '8px', filter: 'drop-shadow(0 0 2px white)' }} /> {/* 追加 */}
+                  <img src="./product_logo.svg" alt="Product Logo" style={{ height: '34px', marginLeft: '8px', filter: 'drop-shadow(0 0 2px white)' }} /> {/* 追加 */}
                 </Link>
               </Typography>
               {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}

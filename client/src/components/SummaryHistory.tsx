@@ -27,7 +27,7 @@ import {
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 import AddReactionIcon from '@mui/icons-material/AddReaction'; // 追加
-import AiAssistant, { Message, HistoryContent } from './AiAssistant'; // AiAssistantと関連する型をインポート
+import { Message, HistoryContent } from './AiAssistant'; // AiAssistantと関連する型をインポート
 
 // App.tsxから渡されるHistoryItemの型を再利用
 interface HistoryItem {
@@ -168,6 +168,8 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
   const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
   const [isEditingTags, setIsEditingTags] = useState(false);
   const [editingTags, setEditingTags] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -228,6 +230,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     setOpen(false);
     setSelectedHistory(null);
     setIsEditingTags(false); // ダイアログを閉じるときに編集モードをリセット
+    setIsEditingTitle(false); // タイトル編集モードもリセット
   };
 
   const handleEditTags = () => {
@@ -272,6 +275,56 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       }
     } catch (error) {
       console.error('Error saving tags:', error);
+    }
+  };
+
+  const handleEditTitle = () => {
+    if (selectedHistory) {
+      setEditingTitle(selectedHistory.filename);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleCancelTitleEdit = () => {
+    setIsEditingTitle(false);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!selectedHistory || !selectedHistory.id || !editingTitle.trim()) return;
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.error('Not logged in');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/summaries/${selectedHistory.id}/title`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ filename: editingTitle }),
+      });
+
+      if (response.ok) {
+        const updatedHistory = { ...selectedHistory, filename: editingTitle };
+        onUpdateHistory(updatedHistory);
+        setSelectedHistory(updatedHistory); // モーダル内の表示も即時更新
+        setIsEditingTitle(false);
+      } else {
+        console.error('Failed to update title');
+        const errorData = await response.json();
+        setSnackbarMessage(errorData.detail || 'タイトルの更新に失敗しました');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('Error saving title:', error);
+      setSnackbarMessage('タイトルの保存中にエラーが発生しました');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     }
   };
 
@@ -503,7 +556,39 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       </Box>
       {selectedHistory && (
         <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
-          <DialogTitle>{selectedHistory.filename}</DialogTitle>
+          <DialogTitle>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {isEditingTitle ? (
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  value={editingTitle}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingTitle(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveTitle();
+                    }
+                  }}
+                  sx={{ mr: 1 }}
+                />
+              ) : (
+                <Typography variant="h6" component="span" sx={{ flexGrow: 1 }}>
+                  {selectedHistory.filename}
+                </Typography>
+              )}
+              <Box>
+                {isEditingTitle ? (
+                  <>
+                    <Button onClick={handleCancelTitleEdit} size="small">キャンセル</Button>
+                    <Button onClick={handleSaveTitle} variant="contained" size="small" sx={{ ml: 1 }}>保存</Button>
+                  </>
+                ) : (
+                  <Button onClick={handleEditTitle} size="small">タイトル編集</Button>
+                )}
+              </Box>
+            </Box>
+          </DialogTitle>
           <DialogContent>
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" gutterBottom>タグ</Typography>

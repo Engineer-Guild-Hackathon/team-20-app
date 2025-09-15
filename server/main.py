@@ -212,6 +212,9 @@ class CommentCreateRequest(BaseModel):
 class ReactionCreateRequest(BaseModel):
     reaction_type: str
 
+class SummaryTitleUpdateRequest(BaseModel):
+    filename: str
+
 class ReactionResponse(BaseModel):
     id: int
     comment_id: int
@@ -1300,6 +1303,29 @@ async def update_summary_tags(
     db.refresh(summary)
 
     return {"message": "タグが正常に更新されました", "summary_id": summary.id, "tags": request.tags}
+
+@app.put("/api/summaries/{summary_id}/title")
+async def update_summary_title(
+    summary_id: int,
+    request: SummaryTitleUpdateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """要約履歴のタイトルを更新するエンドポイント"""
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック：要約の所有者のみがタイトルを編集できる
+    if summary.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="この要約のタイトルを編集する権限がありません")
+
+    summary.filename = request.filename
+    
+    db.commit()
+    db.refresh(summary)
+
+    return {"message": "タイトルが正常に更新されました", "summary_id": summary.id, "filename": request.filename}
 
 @app.get("/api/users/me")
 async def read_users_me(current_user: User = Depends(get_required_user)):
