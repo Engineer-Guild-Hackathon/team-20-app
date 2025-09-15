@@ -30,6 +30,15 @@ interface SharedFile {
   uploaded_at: string; // ISO 8601 string
 }
 
+interface Message {
+  id: number;
+  team_id: number;
+  user_id: number;
+  username: string;
+  content: string;
+  created_at: string; // ISO 8601 string
+}
+
 const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [teamName, setTeamName] = useState<string>('');
   const [myTeams, setMyTeams] = useState<Team[]>([]);
@@ -43,6 +52,10 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
+  const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState<boolean>(false); // New state for create team dialog
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessageContent, setNewMessageContent] = useState<string>('');
+  const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
 
   interface TabPanelProps {
     children?: React.ReactNode;
@@ -73,6 +86,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const tabs = [
     { label: 'チーム管理' },
     { label: 'ファイル共有' },
+    { label: 'チャット' },
   ];
 
   const fetchMyTeams = useCallback(async () => {
@@ -172,6 +186,39 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   }, [showSnackbar]);
 
+  const fetchMessages = useCallback(async (teamId: number) => {
+    setLoadingMessages(true);
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      setLoadingMessages(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${teamId}/messages`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data: Message[] = await response.json();
+        setMessages(data);
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`メッセージの取得に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [showSnackbar]);
+
   useEffect(() => {
     fetchMyTeams();
   }, [fetchMyTeams]);
@@ -179,17 +226,18 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   useEffect(() => {
     if (selectedTeam) {
       fetchTeamMembers(selectedTeam.id);
-      // selectedTeam が変更されたら、ファイルも取得
       fetchSharedFiles(selectedTeam.id);
+      fetchMessages(selectedTeam.id);
     }
-  }, [selectedTeam, fetchTeamMembers, fetchSharedFiles]);
+  }, [selectedTeam, fetchTeamMembers, fetchSharedFiles, fetchMessages]);
 
-  // currentTab が変更されたら、ファイル共有タブの場合にファイルを再取得
   useEffect(() => {
     if (selectedTeam && currentTab === 1) { // 1は「ファイル共有」タブのインデックス
       fetchSharedFiles(selectedTeam.id);
+    } else if (selectedTeam && currentTab === 2) { // 2は「チャット」タブのインデックス
+      fetchMessages(selectedTeam.id);
     }
-  }, [currentTab, selectedTeam, fetchSharedFiles]);
+  }, [currentTab, selectedTeam, fetchSharedFiles, fetchMessages]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {
@@ -218,6 +266,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
         showSnackbar(`チーム「${data.team_name}」を作成しました！`, 'success');
         setTeamName(''); // フォームをクリア
         fetchMyTeams(); // チームリストを更新
+        setCreateTeamDialogOpen(false); // Close the dialog
       } else {
         const errorData = await response.json();
         showSnackbar(`チーム作成に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
@@ -413,6 +462,57 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
   };
 
+  const handleSendMessage = useCallback(async () => {
+    if (!selectedTeam || !newMessageContent.trim()) {
+      showSnackbar('メッセージを入力してください。', 'warning');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: newMessageContent }),
+      });
+
+      if (response.ok) {
+        const sentMessage: Message = await response.json();
+        setMessages((prevMessages) => [...prevMessages, sentMessage]);
+        setNewMessageContent('');
+        showSnackbar('メッセージを送信しました！', 'success');
+      } else {
+        const errorData = await response.json();
+        showSnackbar(`メッセージの送信に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      showSnackbar('ネットワークエラーが発生しました。', 'error');
+    }
+  }, [selectedTeam, newMessageContent, showSnackbar]);
+
+  const handleNewMessageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessageContent(e.target.value);
+  }, []);
+
+  const handleNewMessageKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSendMessage();
+    }
+  }, [handleSendMessage]);
+
+  
+
+  
+
   const isCurrentUserAdmin = selectedTeam ? myTeams.find(t => t.id === selectedTeam.id)?.role === 'admin' : false;
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -422,26 +522,46 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   return (
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          チーム管理
-        </Typography>
-
-        <Box sx={{ mt: 4, p: 3, border: '1px solid #ccc', borderRadius: '8px' }}>
-          <Typography variant="h5" component="h2" gutterBottom>
-            新しいチームを作成
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', my: 4 }}>
+          <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0 }}>
+            チーム管理
           </Typography>
-          <TextField
-            label="チーム名"
-            variant="outlined"
-            fullWidth
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <Button variant="contained" color="primary" onClick={handleCreateTeam}>
-            チームを作成
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateTeamDialogOpen(true)}
+          >
+            新しいチームを作成
           </Button>
         </Box>
+
+        <Dialog open={createTeamDialogOpen} onClose={() => setCreateTeamDialogOpen(false)}
+          PaperProps={{
+            sx: {
+              border: '1px solid #00bcd4', // サイバーチックなボーダー色に変更
+              boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)', // より強調されたシャドウ
+            }
+          }}
+        >
+          <DialogTitle>新しいチームを作成</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="チーム名"
+              type="text"
+              fullWidth
+              variant="outlined"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateTeamDialogOpen(false)}>キャンセル</Button>
+            <Button onClick={handleCreateTeam}>作成</Button>
+          </DialogActions>
+        </Dialog>
 
         <Box sx={{ mt: 4 }}>
           <Typography variant="h5" component="h2" gutterBottom>
@@ -456,7 +576,13 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
           ) : (
             <List>
               {myTeams.map((team) => (
-                <ListItemButton key={team.id} onClick={() => setSelectedTeam(team)} divider>
+                <ListItemButton key={team.id} onClick={() => setSelectedTeam(team)} divider
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 188, 212, 0.1)', // ホバー時の背景色
+                    },
+                  }}
+                >
                   <ListItemText
                     primary={team.name}
                     secondary={`役割: ${team.role}`}
@@ -468,8 +594,8 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
         </Box>
 
         {selectedTeam && (
-          <Box sx={{ mt: 4, border: '1px solid #ccc', borderRadius: '8px' }}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ mt: 4, border: '1px solid #00bcd4', borderRadius: '8px' }}>
+            <Box sx={{ borderBottom: 1, borderColor: '#00bcd4' }}>
               <Tabs value={currentTab} onChange={handleTabChange} aria-label="team management tabs">
                 {tabs.map((tab, index) => (
                   <Tab label={tab.label} key={index} />
@@ -586,10 +712,65 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                 )}
               </Box>
             </TabPanel>
+            <TabPanel value={currentTab} index={2}>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="h5" component="h2" gutterBottom>
+                  チャット
+                </Typography>
+                <Box sx={{ height: '400px', overflowY: 'auto', border: '1px solid #00bcd4', p: 2, mb: 2 }}>
+                  {loadingMessages ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : messages.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">まだメッセージはありません。</Typography>
+                  ) : (
+                    <List>
+                      {messages.map((message) => (
+                        <ListItem key={message.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', p: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {message.username} ({new Date(message.created_at).toLocaleString()})
+                          </Typography>
+                          <Typography variant="body1">
+                            {message.content}
+                          </Typography>
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Box>
+                <TextField
+                  autoFocus
+                  fullWidth
+                  variant="outlined"
+                  placeholder="メッセージを入力..."
+                  value={newMessageContent}
+                  onChange={handleNewMessageChange}
+                  onKeyPress={handleNewMessageKeyPress}
+                  sx={{ mb: 1 }}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSendMessage}
+                  fullWidth
+                  disabled={!newMessageContent.trim()}
+                >
+                  送信
+                </Button>
+              </Box>
+            </TabPanel>
           </Box>
         )}
 
-      <Dialog open={addMemberDialogOpen} onClose={() => setAddMemberDialogOpen(false)}>
+      <Dialog open={addMemberDialogOpen} onClose={() => setAddMemberDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            border: '1px solid #00bcd4', // サイバーチックなボーダー色に変更
+            boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)', // より強調されたシャドウ
+          }
+        }}
+      >
         <DialogTitle>メンバーを追加</DialogTitle>
         <DialogContent>
           <TextField

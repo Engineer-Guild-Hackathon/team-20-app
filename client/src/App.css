@@ -14,7 +14,7 @@
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: transparent; /* 背景色を透明に */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -25,7 +25,7 @@
 }
 
 .App-link {
-  color: #61dafb;
+  color: #00bcd4; /* サイバーチックな青緑系に変更 */
 }
 
 @keyframes App-logo-spin {

@@ -27,6 +27,7 @@ import {
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 import AddReactionIcon from '@mui/icons-material/AddReaction'; // 追加
+import { Message, HistoryContent } from './AiAssistant'; // AiAssistantと関連する型をインポート
 
 // App.tsxから渡されるHistoryItemの型を再利用
 interface HistoryItem {
@@ -38,6 +39,8 @@ interface HistoryItem {
   username?: string; // 追加
   team_name?: string; // 追加
   tags?: string[]; // 追加
+  contents?: HistoryContent[]; // 追加
+  chat_history_id?: number; // チャット履歴IDを追加
 }
 
 interface SummaryHistoryProps {
@@ -46,12 +49,127 @@ interface SummaryHistoryProps {
   onUpdateHistory: (updatedItem: HistoryItem) => void;
 }
 
+// チャット履歴表示用のコンポーネント
+const ChatHistoryDisplay: React.FC<{ chatHistoryId?: number }> = ({ chatHistoryId }) => {
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchChatHistory = async () => {
+      if (!chatHistoryId) {
+        setChatMessages([]);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setError('認証情報がありません');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`http://localhost:8000/api/history-contents/${chatHistoryId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          throw new Error('チャット履歴の読み込みに失敗しました');
+        }
+
+        const data = await response.json();
+        if (data.content) {
+          const messages = JSON.parse(data.content);
+          setChatMessages(messages);
+        } else {
+          setChatMessages([]);
+        }
+      } catch (err) {
+        console.error('Error fetching chat history:', err);
+        setError(err instanceof Error ? err.message : 'チャット履歴の読み込みに失敗しました');
+        setChatMessages([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChatHistory();
+  }, [chatHistoryId]);
+
+  if (loading) {
+    return <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>チャット履歴を読み込み中...</Typography>;
+  }
+
+  if (error) {
+    return <Typography variant="body2" color="error" sx={{ p: 1 }}>{error}</Typography>;
+  }
+
+  if (!chatHistoryId || chatMessages.length === 0) {
+    return <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>AI Assistant とのチャット履歴はありません。</Typography>;
+  }
+
+  return (
+    <List>
+      {chatMessages.map((msg: Message, index: number) => (
+        <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start', px: 0 }}>
+          <Paper
+            elevation={2}
+            sx={{
+              p: 1.5,
+              bgcolor: msg.sender === 'user' ? 'primary.main' : 'background.paper',
+              color: msg.sender === 'user' ? 'primary.contrastText' : 'text.primary',
+              maxWidth: '80%',
+              border: '1px solid #00bcd4',
+              boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)',
+            }}
+          >
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p style={{ margin: 0 }}>{children}</p>,
+                pre: ({ children }) => (
+                  <pre style={{
+                    backgroundColor: '#1a1a2e',
+                    color: '#e0e0e0',
+                    border: '1px solid #00bcd4',
+                    borderRadius: '4px',
+                    padding: '10px',
+                    overflowX: 'auto',
+                    boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)',
+                    whiteSpace: "break-spaces"
+                  }}>
+                    {children}
+                  </pre>
+                ),
+                code: ({ children }) => (
+                  <code style={{
+                    fontFamily: '"Share Tech Mono", monospace',
+                    fontSize: '0.9em',
+                  }}>
+                    {children}
+                  </code>
+                ),
+              }}>
+              {msg.text}
+            </ReactMarkdown>
+          </Paper>
+        </ListItem>
+      ))}
+    </List>
+  );
+};
+
 const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick, onUpdateHistory }) => {
   const [filter, setFilter] = useState('all');
   const [open, setOpen] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
   const [isEditingTags, setIsEditingTags] = useState(false);
   const [editingTags, setEditingTags] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -112,6 +230,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     setOpen(false);
     setSelectedHistory(null);
     setIsEditingTags(false); // ダイアログを閉じるときに編集モードをリセット
+    setIsEditingTitle(false); // タイトル編集モードもリセット
   };
 
   const handleEditTags = () => {
@@ -156,6 +275,56 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       }
     } catch (error) {
       console.error('Error saving tags:', error);
+    }
+  };
+
+  const handleEditTitle = () => {
+    if (selectedHistory) {
+      setEditingTitle(selectedHistory.filename);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleCancelTitleEdit = () => {
+    setIsEditingTitle(false);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!selectedHistory || !selectedHistory.id || !editingTitle.trim()) return;
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.error('Not logged in');
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/summaries/${selectedHistory.id}/title`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ filename: editingTitle }),
+      });
+
+      if (response.ok) {
+        const updatedHistory = { ...selectedHistory, filename: editingTitle };
+        onUpdateHistory(updatedHistory);
+        setSelectedHistory(updatedHistory); // モーダル内の表示も即時更新
+        setIsEditingTitle(false);
+      } else {
+        console.error('Failed to update title');
+        const errorData = await response.json();
+        setSnackbarMessage(errorData.detail || 'タイトルの更新に失敗しました');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+      }
+    } catch (error) {
+      console.error('Error saving title:', error);
+      setSnackbarMessage('タイトルの保存中にエラーが発生しました');
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
     }
   };
 
@@ -268,10 +437,11 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       sx={{
         height: '100%',
         p: 2,
-        border: '1px solid #e0e0e0',
+        border: '1px solid #00bcd4',
         borderRadius: 2,
         display: 'flex',
         flexDirection: 'column',
+        boxShadow: '0 0 15px rgba(0, 188, 212, 0.7)',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -291,6 +461,10 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           }}
           aria-label="history filter"
           size="small"
+          sx={{
+            border: '1px solid #00bcd4', // ボーダーを追加
+            boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)', // シャドウを追加
+          }}
         >
           <ToggleButton value="all" aria-label="all histories">
             すべて
@@ -303,7 +477,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           </ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      <Divider sx={{ mb: 1 }} />
+      <Divider sx={{ mb: 1, borderColor: '#00bcd4' }} />
       <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
         {displayedHistories.length === 0 ? (
           <Typography sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
@@ -313,7 +487,14 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
           <List disablePadding>
             {displayedHistories.map((item, index) => (
               <ListItem key={item.id || index} disablePadding>
-                <ListItemButton onClick={() => handleHistoryItemClick(item)}>
+                <ListItemButton
+                  onClick={() => handleHistoryItemClick(item)}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 188, 212, 0.1)', // ホバー時の背景色
+                    },
+                  }}
+                >
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -330,8 +511,8 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                           <Chip
                             label={`チーム共有: ${item.team_name || '不明'} (${item.username || '不明'})`}
                             size="small"
-                            color="info"
-                            sx={{ ml: 1 }}
+                            // color="info" // 削除
+                            sx={{ ml: 1, border: '1px solid #00bcd4' }} // ボーダーを追加
                           />
                         )}
                       </Box>
@@ -341,7 +522,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flexGrow: 1 }}>
                             {item.tags?.map((tag, index) => (
-                              <Chip key={index} label={tag} size="small" />
+                              <Chip key={index} label={tag} size="small" sx={{ border: '1px solid #00bcd4' }} /> // ボーダーを追加
                             ))}
                           </Box>
                           <Typography
@@ -350,7 +531,8 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                             color="text.secondary"
                             sx={{ flexShrink: 0, ml: 1 }}
                           >
-                            {item.created_at && !isNaN(new Date(item.created_at + "Z").getTime())
+                            <>{console.log(item.created_at)}</>
+                            {item.created_at && !isNaN(new Date(item.created_at).getTime())
                               ? new Intl.DateTimeFormat('ja-JP', {
                                   year: 'numeric',
                                   month: '2-digit',
@@ -358,7 +540,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                                   hour: '2-digit',
                                   minute: '2-digit',
                                   second: '2-digit',
-                                }).format(new Date(item.created_at + "Z"))
+                                }).format(new Date(item.created_at))
                               : '日付不明'}
                           </Typography>
                         </Box>
@@ -374,7 +556,39 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       </Box>
       {selectedHistory && (
         <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
-          <DialogTitle>{selectedHistory.filename}</DialogTitle>
+          <DialogTitle>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {isEditingTitle ? (
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  value={editingTitle}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingTitle(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveTitle();
+                    }
+                  }}
+                  sx={{ mr: 1 }}
+                />
+              ) : (
+                <Typography variant="h6" component="span" sx={{ flexGrow: 1 }}>
+                  {selectedHistory.filename}
+                </Typography>
+              )}
+              <Box>
+                {isEditingTitle ? (
+                  <>
+                    <Button onClick={handleCancelTitleEdit} size="small">キャンセル</Button>
+                    <Button onClick={handleSaveTitle} variant="contained" size="small" sx={{ ml: 1 }}>保存</Button>
+                  </>
+                ) : (
+                  <Button onClick={handleEditTitle} size="small">タイトル編集</Button>
+                )}
+              </Box>
+            </Box>
+          </DialogTitle>
           <DialogContent>
             <Box sx={{ mb: 2 }}>
               <Typography variant="subtitle2" gutterBottom>タグ</Typography>
@@ -400,7 +614,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 </Box>
               )}
             </Box>
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
             <Typography variant="subtitle2" gutterBottom>要約</Typography>
             <DialogContentText
               component="div"
@@ -408,7 +622,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 whiteSpace: 'pre-wrap',
                 maxHeight: '30vh', // 変更
                 overflowY: 'auto',
-                border: '1px solid #e0e0e0', // 枠線
+                border: '1px solid #00bcd4', // 枠線
                 borderRadius: 1, // 角丸
                 p: 2, // パディング
                 mt: 1, // 上マージン (必要であれば)
@@ -417,18 +631,19 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
               <ReactMarkdown>{selectedHistory.summary}</ReactMarkdown>
             </DialogContentText>
 
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
 
             <Typography variant="subtitle2" gutterBottom>コメント</Typography>
-            <Box sx={{ maxHeight: '30vh', overflowY: 'auto', mb: 2, border: '1px solid #e0e0e0', borderRadius: 1, p: 1 }}>
+            <Box sx={{ maxHeight: '30vh', overflowY: 'auto', mb: 2, border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
               {comments.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>コメントはありません。</Typography>
               ) : (
                 <List dense>
                   {comments.map((comment) => (
-                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
+                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #00bcd4', pb: 1, mb: 1 }}>
                       <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" color="text.secondary">
+                            <>{console.log("====" + comment.created_at)}</>
                           {comment.username} - {comment.created_at && !isNaN(new Date(comment.created_at + "Z").getTime())
                             ? new Intl.DateTimeFormat('ja-JP', {
                                 year: 'numeric',
@@ -507,6 +722,13 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 投稿
               </Button>
             </Box>
+
+            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
+
+            <Typography variant="subtitle2" gutterBottom>AI Assistant チャット履歴</Typography>
+            <Box sx={{ maxHeight: '40vh', overflowY: 'auto', mb: 2, border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
+              <ChatHistoryDisplay chatHistoryId={selectedHistory.chat_history_id} />
+            </Box>
           </DialogContent>
           <DialogActions>
             {isEditingTags ? (
@@ -515,20 +737,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 <Button onClick={handleSaveTags} variant="contained">保存</Button>
               </>
             ) : (
-              <>
-                <Button onClick={handleClose}>閉じる</Button>
-                <Button
-                  onClick={() => {
-                    if (selectedHistory) {
-                      onHistoryClick(selectedHistory);
-                    }
-                    handleClose();
-                  }}
-                  variant="contained"
-                >
-                  表示
-                </Button>
-              </>
+              <Button onClick={handleClose}>閉じる</Button>
             )}
           </DialogActions>
         </Dialog>

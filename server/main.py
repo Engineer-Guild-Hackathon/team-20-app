@@ -1,5 +1,6 @@
 import logging
 import time
+import json
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Depends, status, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -11,7 +12,8 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction
+from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
@@ -34,6 +36,23 @@ app = FastAPI(title="Team 20 API", version="1.0.0")
 
 # データベーステーブルを作成
 Base.metadata.create_all(bind=engine)
+
+# 既存DBの不足カラムを補完（SQLite向け簡易マイグレーション）
+try:
+    inspector = inspect(engine)
+    columns = [c['name'] for c in inspector.get_columns('summary_histories')]
+    if 'original_file_path' not in columns:
+        logging.info("Adding missing column 'original_file_path' to summary_histories table")
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN original_file_path STRING"))
+            conn.commit()
+    if 'chat_history_id' not in columns:
+        logging.info("Adding missing column 'chat_history_id' to summary_histories table")
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN chat_history_id INTEGER"))
+            conn.commit()
+except Exception as e:
+    logging.warning(f"Failed to ensure DB schema for summary_histories: {e}")
 
 # CORS設定 - フロントエンドからのアクセスを許可
 app.add_middleware(
@@ -161,6 +180,7 @@ def get_required_user(authorization: str = Header(...), db: Session = Depends(ge
 class ChatRequest(BaseModel):
     message: str
     pdf_summary: Optional[str] = None
+    summary_id: Optional[int] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -176,6 +196,8 @@ class SaveSummaryRequest(BaseModel):
     summary: str
     team_id: Optional[int] = None # 追加
     tags: Optional[List[str]] = None # 追加
+    original_file_path: Optional[str] = None # PDFファイルパス
+    ai_chat_history: Optional[str] = None # 追加: AI Assistantのチャット履歴 (JSON文字列)
 
 class TagsUpdateRequest(BaseModel):
     tags: List[str]
@@ -189,6 +211,9 @@ class CommentCreateRequest(BaseModel):
 
 class ReactionCreateRequest(BaseModel):
     reaction_type: str
+
+class SummaryTitleUpdateRequest(BaseModel):
+    filename: str
 
 class ReactionResponse(BaseModel):
     id: int
@@ -224,6 +249,23 @@ class HistoryContentResponse(BaseModel):
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
+class SummaryListItemResponse(BaseModel):
+    id: int
+    filename: str
+    summary: str
+    created_at: datetime
+    team_id: Optional[int] = None
+    username: Optional[str] = None
+    team_name: Optional[str] = None
+    tags: List[str] = []
+    chat_history_id: Optional[int] = None  # チャット履歴IDを追加
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+
 class SummaryHistoryDetailResponse(BaseModel):
     id: int
     user_id: int
@@ -231,13 +273,14 @@ class SummaryHistoryDetailResponse(BaseModel):
     filename: str
     summary: str
     created_at: datetime
-    contents: List[HistoryContentResponse] = []
+    contents: Optional[List[HistoryContentResponse]] = None # 変更
 
     class Config:
         from_attributes = True
         json_encoders = {
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
+
 
 class SharedFileResponse(BaseModel):
     id: int
@@ -246,6 +289,23 @@ class SharedFileResponse(BaseModel):
     uploaded_by_user_id: int
     uploaded_by_username: str
     uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        }
+
+class MessageCreateRequest(BaseModel):
+    content: str
+
+class MessageResponse(BaseModel):
+    id: int
+    team_id: int
+    user_id: int
+    username: str
+    content: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -467,21 +527,55 @@ async def health_check():
     return {"status": "healthy", "message": "サーバーは正常に動作しています"}
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """チャットエンドポイント"""
 
     client = genai.Client(api_key=API_KEY)
     try:
+        # summary_idが指定されていて、PDFファイルが存在する場合は直接参照
+        if request.summary_id:
+            summary = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_id).first()
+            if summary and summary.original_file_path and os.path.exists(summary.original_file_path):
+                try:
+                    # PDFファイルを読み込んでBase64エンコード
+                    with open(summary.original_file_path, 'rb') as f:
+                        file_content = f.read()
+                    base64_content = base64.b64encode(file_content).decode('utf-8')
+                    
+                    logging.info(f"Using PDF file directly: {summary.original_file_path}")
+                    
+                    # PDFファイルと要約の両方を参照
+                    response = client.models.generate_content(
+                        model='gemini-2.0-flash-001',
+                        contents=[
+                            {
+                                'parts': [
+                                    {'text': f"このPDFファイルの内容と以下の要約を参考に質問に答えてください。より詳細な情報が必要な場合はPDFファイルの内容を優先してください。\n\n要約:\n{request.pdf_summary or summary.summary}\n\n質問:\n{request.message}"},
+                                    {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
+                                ]
+                            }
+                        ]
+                    )
+                    
+                    if hasattr(response, 'text') and response.text:
+                        return {"reply": response.text}
+                    elif hasattr(response, 'candidates') and response.candidates:
+                        return {"reply": response.candidates[0].content.parts[0].text}
+                
+                except Exception as pdf_error:
+                    logging.error(f"Error processing PDF file: {str(pdf_error)}")
+                    # PDFファイルの読み込みに失敗した場合は要約のみで処理
+        
+        # 従来の要約のみの処理
         full_content = request.message
         if request.pdf_summary:
             full_content = f"以下のPDF要約を考慮して質問に答えてください。\n\nPDF要約:\n{request.pdf_summary}\n\n質問:\n{request.message}"
 
-        # 新しいモデル名に変更
         response = client.models.generate_content(
             model='gemini-2.0-flash-001', contents=full_content
         )
         
-        logging.info(f"Generated response: {response.text}")
+        logging.info(f"Generated response using summary only")
         
         if not response or not response.text:
             return {"reply": "応答なし！"}
@@ -489,7 +583,6 @@ async def chat(request: ChatRequest):
         return {"reply": response.text}
     except Exception as e:
         logging.error(f"Error in chat endpoint: {str(e)}")
-        # エラーハンドリングを有効化
         raise HTTPException(status_code=500, detail=f"AI応答エラー: {str(e)}")
 
 
@@ -508,6 +601,15 @@ async def upload_pdf(
         
         file_content = await file.read()
         base64_content = base64.b64encode(file_content).decode('utf-8')
+        
+        # PDFファイルを保存（チャット時に参照するため）
+        unique_filename = f"{uuid.uuid4()}_{file.filename}"
+        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+        
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        
+        logging.info(f"PDF file saved to: {file_path}")
         
         client = genai.Client(api_key=API_KEY)
         
@@ -547,7 +649,8 @@ async def upload_pdf(
             "filename": file.filename,
             "summary": summary,
             "status": "success",
-            "tags": generated_tags # 生成されたタグをレスポンスに追加
+            "tags": generated_tags, # 生成されたタグをレスポンスに追加
+            "file_path": file_path  # PDFファイルパスを追加
         }
         
     except HTTPException:
@@ -561,7 +664,7 @@ async def say_hello(name: str):
     """挨拶エンドポイント"""
     return {"message": f"こんにちは、{name}さん！"}
 
-@app.get("/api/summaries")
+@app.get("/api/summaries", response_model=List[SummaryListItemResponse])
 async def get_summaries(current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
     """認証されたユーザーの要約履歴と、所属チームの共有要約を取得する"""
     try:
@@ -572,16 +675,23 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         
         user_summaries_data = []
         for summary, username, team_name in user_summaries_query.all():
-            user_summaries_data.append({
-                "id": summary.id,
-                "filename": summary.filename,
-                "summary": summary.summary,
-                "created_at": summary.created_at,
-                "team_id": summary.team_id,
-                "username": username, # 自分の要約の作成者名
-                "team_name": team_name, # チーム名を追加
-                "tags": summary.tags.split(',') if summary.tags else []
-            })
+            # created_at を明示的にUTCに変換
+            if summary.created_at.tzinfo is None:
+                created_at_utc = summary.created_at.replace(tzinfo=timezone.utc)
+            else:
+                created_at_utc = summary.created_at.astimezone(timezone.utc)
+
+            user_summaries_data.append(SummaryListItemResponse(
+                id=summary.id,
+                filename=summary.filename,
+                summary=summary.summary,
+                created_at=created_at_utc,
+                team_id=summary.team_id,
+                username=username,
+                team_name=team_name,
+                tags=summary.tags.split(',') if summary.tags else [],
+                chat_history_id=summary.chat_history_id
+            ))
 
         # ユーザーが所属するチームのIDを取得
         user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
@@ -598,16 +708,23 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
             shared_summaries_results = shared_summaries_query.all()
 
             for summary, username, team_name in shared_summaries_results:
-                shared_summaries_data.append({
-                    "id": summary.id,
-                    "filename": summary.filename,
-                    "summary": summary.summary,
-                    "created_at": summary.created_at,
-                    "team_id": summary.team_id,
-                    "username": username, # 共有要約の作成者名
-                    "team_name": team_name, # チーム名を追加
-                    "tags": summary.tags.split(',') if summary.tags else []
-                })
+                # created_at を明示的にUTCに変換
+                if summary.created_at.tzinfo is None:
+                    created_at_utc = summary.created_at.replace(tzinfo=timezone.utc)
+                else:
+                    created_at_utc = summary.created_at.astimezone(timezone.utc)
+
+                shared_summaries_data.append(SummaryListItemResponse(
+                    id=summary.id,
+                    filename=summary.filename,
+                    summary=summary.summary,
+                    created_at=created_at_utc,
+                    team_id=summary.team_id,
+                    username=username,
+                    team_name=team_name,
+                    tags=summary.tags.split(',') if summary.tags else [],
+                    chat_history_id=summary.chat_history_id
+                ))
 
         # 両方のリストを結合して返す
         all_summaries = user_summaries_data + shared_summaries_data
@@ -616,8 +733,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         # ここでは単純に結合しているため、重複排除とソートはフロントエンドで行うか、
         # より複雑なクエリを構築する必要があります。
         # 例: set()を使って重複排除し、リストに変換後ソート
-        unique_summaries = list({s["id"]: s for s in all_summaries}.values())
-        unique_summaries.sort(key=lambda x: x["created_at"], reverse=True)
+        unique_summaries = list({s.id: s for s in all_summaries}.values())
+        unique_summaries.sort(key=lambda x: x.created_at, reverse=True)
 
         return unique_summaries
     except Exception as e:
@@ -828,17 +945,49 @@ async def save_summary(
             if not team_membership:
                 raise HTTPException(status_code=403, detail="指定されたチームに要約を保存する権限がありません")
 
+        # まず要約履歴を作成（chat_history_id は後で設定）
         new_history = SummaryHistory(
             user_id=current_user.id,
             filename=request.filename,
             summary=request.summary,
             team_id=request.team_id,
             tags=",".join(request.tags) if request.tags else None, # tagsを追加
+            original_file_path=request.original_file_path, # PDFファイルパスを追加
             created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
         )
         db.add(new_history)
         db.commit()
         db.refresh(new_history)
+
+        # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+        chat_history_content_id = None
+        if request.ai_chat_history:
+            try:
+                # ai_chat_history は JSON 文字列として渡されることを想定
+                chat_content_data = json.loads(request.ai_chat_history)
+
+                new_chat_history_content = HistoryContent(
+                    summary_history_id=new_history.id,
+                    section_type='ai_chat',
+                    content=json.dumps(chat_content_data), # JSON文字列として保存
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                db.add(new_chat_history_content)
+                db.commit()
+                db.refresh(new_chat_history_content)
+
+                # SummaryHistoryにチャット履歴のIDを設定
+                chat_history_content_id = new_chat_history_content.id
+                new_history.chat_history_id = chat_history_content_id
+                db.commit()
+
+                logging.info(f"AI chat history saved for summary_id {new_history.id} with content_id {chat_history_content_id}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to decode ai_chat_history JSON: {e}")
+            except Exception as e:
+                logging.error(f"Error saving AI chat history: {e}")
+
         return {"message": "要約が正常に保存されました", "id": new_history.id}
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
@@ -1022,13 +1171,14 @@ async def download_shared_file(
     return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
 
 
-@app.get("/api/teams/{team_id}/files", response_model=List[SharedFileResponse])
-async def get_shared_files(
+@app.post("/api/teams/{team_id}/messages", response_model=MessageResponse)
+async def send_message(
     team_id: int,
+    request: MessageCreateRequest,
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
-    """チームに共有されたファイルの一覧を取得するエンドポイント"""
+    """チームにメッセージを送信するエンドポイント"""
     # チームが存在するか確認
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:
@@ -1040,51 +1190,63 @@ async def get_shared_files(
         TeamMember.team_id == team_id
     ).first()
     if not team_membership:
-        raise HTTPException(status_code=403, detail="このチームのファイルリストを閲覧する権限がありません")
+        raise HTTPException(status_code=403, detail="このチームにメッセージを送信する権限がありません")
 
-    # チームに共有されたファイルを取得
-    shared_files = db.query(SharedFile, User.username).join(User, SharedFile.uploaded_by_user_id == User.id).filter(
-        SharedFile.team_id == team_id
-    ).order_by(SharedFile.uploaded_at.desc()).all()
+    new_message = Message(
+        team_id=team_id,
+        user_id=current_user.id,
+        content=request.content,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
 
-    # レスポンスモデルに合うようにデータを整形
-    files_data = []
-    for file, username in shared_files:
-        files_data.append(SharedFileResponse(
-            id=file.id,
-            filename=file.filename,
-            team_id=file.team_id,
-            uploaded_by_user_id=file.uploaded_by_user_id,
-            uploaded_by_username=username,
-            uploaded_at=file.uploaded_at
-        ))
-    return files_data
+    return MessageResponse(
+        id=new_message.id,
+        team_id=new_message.team_id,
+        user_id=new_message.user_id,
+        username=current_user.username, # current_userから取得
+        content=new_message.content,
+        created_at=new_message.created_at
+    )
 
 
-@app.get("/api/files/{file_id}")
-async def download_shared_file(
-    file_id: int,
+@app.get("/api/teams/{team_id}/messages", response_model=List[MessageResponse])
+async def get_messages(
+    team_id: int,
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
-    """共有ファイルをダウンロードするエンドポイント"""
-    shared_file = db.query(SharedFile).filter(SharedFile.id == file_id).first()
-    if not shared_file:
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+    """チームのメッセージ履歴を取得するエンドポイント"""
+    # チームが存在するか確認
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="チームが見つかりません")
 
-    # ユーザーがファイルが共有されているチームのメンバーであることを確認
+    # ユーザーがチームのメンバーであることを確認
     team_membership = db.query(TeamMember).filter(
         TeamMember.user_id == current_user.id,
-        TeamMember.team_id == shared_file.team_id
+        TeamMember.team_id == team_id
     ).first()
     if not team_membership:
-        raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+        raise HTTPException(status_code=403, detail="このチームのメッセージを閲覧する権限がありません")
 
-    file_path = shared_file.filepath
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
+    messages = db.query(Message, User.username).join(User, Message.user_id == User.id).filter(
+        Message.team_id == team_id
+    ).order_by(Message.created_at).all()
 
-    return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
+    messages_data = []
+    for message, username in messages:
+        messages_data.append(MessageResponse(
+            id=message.id,
+            team_id=message.team_id,
+            user_id=message.user_id,
+            username=username,
+            content=message.content,
+            created_at=message.created_at
+        ))
+    return messages_data
 
 
 @app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
@@ -1142,10 +1304,72 @@ async def update_summary_tags(
 
     return {"message": "タグが正常に更新されました", "summary_id": summary.id, "tags": request.tags}
 
+@app.put("/api/summaries/{summary_id}/title")
+async def update_summary_title(
+    summary_id: int,
+    request: SummaryTitleUpdateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """要約履歴のタイトルを更新するエンドポイント"""
+    summary = db.query(SummaryHistory).filter(SummaryHistory.id == summary_id).first()
+    if not summary:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック：要約の所有者のみがタイトルを編集できる
+    if summary.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="この要約のタイトルを編集する権限がありません")
+
+    summary.filename = request.filename
+    
+    db.commit()
+    db.refresh(summary)
+
+    return {"message": "タイトルが正常に更新されました", "summary_id": summary.id, "filename": request.filename}
+
 @app.get("/api/users/me")
 async def read_users_me(current_user: User = Depends(get_required_user)):
     """現在のユーザー情報を取得するエンドポイント"""
     return {"username": current_user.username, "id": current_user.id}
+
+@app.get("/api/history-contents/{content_id}")
+async def get_history_content_by_id(
+    content_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """IDに基づいて履歴コンテンツを取得するエンドポイント"""
+    history_content = db.query(HistoryContent).filter(HistoryContent.id == content_id).first()
+
+    if not history_content:
+        raise HTTPException(status_code=404, detail="履歴コンテンツが見つかりません")
+
+    # 権限チェック：関連する要約履歴の所有者またはチームメンバーかを確認
+    summary_history = db.query(SummaryHistory).filter(SummaryHistory.id == history_content.summary_history_id).first()
+    if not summary_history:
+        raise HTTPException(status_code=404, detail="関連する要約履歴が見つかりません")
+
+    is_owner = summary_history.user_id == current_user.id
+    is_team_member = False
+    if summary_history.team_id:
+        membership = db.query(TeamMember).filter(
+            TeamMember.team_id == summary_history.team_id,
+            TeamMember.user_id == current_user.id
+        ).first()
+        if membership:
+            is_team_member = True
+
+    if not is_owner and not is_team_member:
+        raise HTTPException(status_code=403, detail="この履歴コンテンツを閲覧する権限がありません")
+
+    return HistoryContentResponse(
+        id=history_content.id,
+        summary_history_id=history_content.summary_history_id,
+        section_type=history_content.section_type,
+        content=history_content.content,
+        created_at=history_content.created_at,
+        updated_at=history_content.updated_at
+    )
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
