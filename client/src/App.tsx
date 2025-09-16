@@ -11,10 +11,14 @@ import {
   MenuItem,
   Snackbar,
   Alert,
-  Button
+  Button,
+  FormControl, // Added
+  InputLabel, // Added
+  Select // Added
 } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import SaveIcon from '@mui/icons-material/Save'; // Added
 import PdfViewer from './components/PdfViewer';
 import AiAssistant, { Message } from './components/AiAssistant';
 import Workspace from './components/Workspace';
@@ -44,6 +48,12 @@ interface HistoryContent {
   content: string;
   created_at: string;
   updated_at: string;
+}
+
+interface Team {
+  id: number;
+  name: string;
+  role: string;
 }
 
 function App() {
@@ -121,15 +131,97 @@ function App() {
   const openMenu = Boolean(anchorEl);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [username, setUsername] = useState<string | null>(null);
+  const [myTeams, setMyTeams] = useState<Team[]>([]); // New
+  const [selectedTeamId, setSelectedTeamId] = useState<number | '' | '個人用'>(''); // New
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
+
+  // 履歴表示前の状態を保存するためのstate
+  const [previousPdfSummary, setPreviousPdfSummary] = useState<string | undefined>(undefined);
+  const [previousPdfFilename, setPreviousPdfFilename] = useState<string | undefined>(undefined);
+  const [previousPdfSummaryId, setPreviousPdfSummaryId] = useState<number | undefined>(undefined);
+  const [previousPdfTags, setPreviousPdfTags] = useState<string[] | undefined>(undefined);
+  const [previousPdfFilePath, setPreviousPdfFilePath] = useState<string | undefined>(undefined);
+  const [previousChatMessages, setPreviousChatMessages] = useState<Message[] | undefined>(undefined);
+  const [previousViewMode, setPreviousViewMode] = useState<'new' | 'history' | 'current' | undefined>(undefined);
+
+  const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
-  }, []);
+    if (token) {
+      try {
+        const response = await fetch('http://localhost:8000/api/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setIsLoggedIn(true);
+          setUsername(data.username);
+        } else {
+          // トークンが無効な場合はログアウト状態にする
+          localStorage.removeItem('access_token');
+          setIsLoggedIn(false);
+          setUsername(null);
+          showSnackbar('セッションの有効期限が切れました。再度ログインしてください。', 'warning');
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error);
+        localStorage.removeItem('access_token');
+        setIsLoggedIn(false);
+        setUsername(null);
+      }
+    } else {
+      setIsLoggedIn(false);
+      setUsername(null);
+    }
+  }, [showSnackbar]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  // New useEffect for fetching teams
+  useEffect(() => {
+    const fetchMyTeams = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setMyTeams([]);
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:8000/api/users/me/teams', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data: Team[] = await response.json();
+          setMyTeams(data);
+        } else {
+          console.error('Failed to fetch teams for App.tsx');
+          setMyTeams([]);
+        }
+      } catch (error) {
+        console.error('Error fetching teams for App.tsx:', error);
+        setMyTeams([]);
+      }
+    };
+
+    if (isLoggedIn) {
+      fetchMyTeams();
+    } else {
+      setMyTeams([]); // ログアウト時はチームをクリア
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -185,21 +277,21 @@ function App() {
   }, [isLoggedIn, setSummaryHistories]);
 
   useEffect(() => {
-    // fetchHistories(); // この行は削除またはコメントアウト
-  }, [isLoggedIn]);
+    fetchHistories();
+  }, [isLoggedIn, fetchHistories]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
   const handleCloseMenu = () => setAnchorEl(null);
 
   const handleCloseLoginModal = () => {
     setIsLoginModalOpen(false);
-    setIsLoggedIn(!!localStorage.getItem('access_token'));
+    checkAuth(); // ログイン後に認証状態を再チェック
   };
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
-    setIsLoggedIn(false);
     handleCloseMenu();
+    checkAuth(); // 認証状態を再チェック
     showSnackbar('ログアウトしました。', 'info');
 
     // ログアウト時は作業データもクリア（オプション）
@@ -214,12 +306,6 @@ function App() {
       console.error('Failed to clear session data on logout:', e);
     }
   };
-
-  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
-    setSnackbarMessage(message);
-    setSnackbarSeverity(severity);
-    setSnackbarOpen(true);
-  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
 
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
@@ -267,6 +353,15 @@ function App() {
       showSnackbar('詳細の読み込みにはログインが必要です。', 'warning');
       return;
     }
+    // 現在の作業状態を一時保存
+    setPreviousPdfSummary(pdfSummary);
+    setPreviousPdfFilename(pdfFilename);
+    setPreviousPdfSummaryId(pdfSummaryId);
+    setPreviousPdfTags(pdfTags);
+    setPreviousPdfFilePath(pdfFilePath);
+    setPreviousChatMessages(chatMessages);
+    setPreviousViewMode(viewMode);
+
     try {
       const response = await fetch(`http://localhost:8000/api/summaries/${item.id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -278,30 +373,47 @@ function App() {
       setPdfSummary(data.summary);
       setPdfFilename(data.filename);
       setPdfSummaryId(data.id);
+      setPdfTags(item.tags || []); // 履歴アイテムのタグを引き継ぐ
+      setPdfFilePath(data.original_file_path || ''); // ファイルパスも設定
+
+      // AIチャット履歴のロード
+      const aiChatHistoryContent = data.contents?.find((content: HistoryContent) => content.section_type === 'ai_chat');
+      if (aiChatHistoryContent && aiChatHistoryContent.content) {
+        try {
+          const parsedChatMessages = JSON.parse(aiChatHistoryContent.content);
+          setChatMessages(parsedChatMessages);
+        } catch (e) {
+          console.error("Failed to parse AI chat history from historical contents:", e);
+          setChatMessages([]);
+        }
+      } else {
+        setChatMessages([]);
+      }
 
       // sessionStorage に履歴データを保存（表示内容として）
       try {
         sessionStorage.setItem('currentPdfSummary', data.summary);
         sessionStorage.setItem('currentPdfFilename', data.filename);
         sessionStorage.setItem('currentPdfSummaryId', data.id.toString());
-        // 履歴のタグ情報があれば保存
         if (data.tags) {
           sessionStorage.setItem('currentPdfTags', JSON.stringify(data.tags.split(',').filter((t: string) => t.trim())));
         }
+        sessionStorage.setItem('currentPdfFilePath', data.original_file_path || '');
+        sessionStorage.setItem('currentChatMessages', JSON.stringify(chatMessages)); // ロードしたチャットメッセージも保存
       } catch (e) {
         console.error('Failed to save history PDF data to sessionStorage:', e);
       }
 
-      // 履歴表示モードに切り替え
-      setViewMode('history');
-      setHistoricalContents(data.contents);
+      // 現在のチャットモードに切り替え
+      setViewMode('current');
+      setHistoricalContents(undefined); // 履歴モードではないのでクリア
 
       navigate('/');
     } catch (error) {
       console.error(error);
       showSnackbar(error instanceof Error ? error.message : '不明なエラーです。', 'error');
     }
-  }, [showSnackbar, navigate, setPdfSummary, setPdfFilename, setPdfSummaryId]);
+  }, [showSnackbar, navigate, setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, pdfSummary, pdfFilename, pdfSummaryId, pdfTags, pdfFilePath, chatMessages, viewMode]);
 
   const handleMessagesChange = (messages: Message[]) => {
     setChatMessages(messages);
@@ -318,17 +430,51 @@ function App() {
   };
 
   const handleExitHistoryView = useCallback(() => {
-    setViewMode('current'); // 現在進行中モードに切り替え
-  }, []);
+    // 一時保存した状態を復元
+    setPdfSummary(previousPdfSummary || '');
+    setPdfFilename(previousPdfFilename || '');
+    setPdfSummaryId(previousPdfSummaryId);
+    setPdfTags(previousPdfTags || []);
+    setPdfFilePath(previousPdfFilePath || '');
+    setChatMessages(previousChatMessages || []);
+    setViewMode(previousViewMode || 'new'); // previousViewModeがundefinedの場合は'new'に
 
-  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null) => {
+    // 一時保存状態をクリア
+    setPreviousPdfSummary(undefined);
+    setPreviousPdfFilename(undefined);
+    setPreviousPdfSummaryId(undefined);
+    setPreviousPdfTags(undefined);
+    setPreviousPdfFilePath(undefined);
+    setPreviousChatMessages(undefined);
+    setPreviousViewMode(undefined);
+
+    // sessionStorageも更新
+    try {
+      sessionStorage.setItem('currentPdfSummary', previousPdfSummary || '');
+      sessionStorage.setItem('currentPdfFilename', previousPdfFilename || '');
+      if (previousPdfSummaryId) {
+        sessionStorage.setItem('currentPdfSummaryId', previousPdfSummaryId.toString());
+      } else {
+        sessionStorage.removeItem('currentPdfSummaryId');
+      }
+      sessionStorage.setItem('currentPdfTags', JSON.stringify(previousPdfTags || []));
+      sessionStorage.setItem('currentPdfFilePath', previousPdfFilePath || '');
+      sessionStorage.setItem('currentChatMessages', JSON.stringify(previousChatMessages || []));
+    } catch (e) {
+      console.error('Failed to restore session data on exit history view:', e);
+    }
+
+  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode,
+      previousPdfSummary, previousPdfFilename, previousPdfSummaryId, previousPdfTags, previousPdfFilePath, previousChatMessages, previousViewMode]);
+
+  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null): Promise<number | undefined> => {
     if (!isLoggedIn) {
       showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);
-      return;
+      return undefined; // Return undefined on failure
     }
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+    if (!token) return undefined; // Return undefined on failure
 
     let currentUsername = usernameFromProps; // PdfViewerから渡されたusernameを優先
 
@@ -394,16 +540,73 @@ function App() {
         username: currentUsername || undefined // ここを修正
       };
       setSummaryHistories(prev => [newHistoryItem, ...prev]);
+      return newSummaryId; // Return the new summary ID
 
     } catch (error) {
         console.error('Error saving history:', error);
         showSnackbar(error instanceof Error ? error.message : '保存中にエラーが発生しました。', 'error');
+        return undefined; // Return undefined on error
+    }
+  };
+
+  const handleCommentAttemptWithoutSave = async (commentContent: string) => {
+    if (!isLoggedIn) {
+      showSnackbar('コメント機能を利用するにはログインが必要です。', 'warning');
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    let targetSummaryId = pdfSummaryId;
+
+    // もし要約がまだ保存されていない場合、まず要約を保存する
+    if (!targetSummaryId && pdfSummary && pdfFilename) {
+      showSnackbar('コメントを保存するために、まず要約を保存します。', 'info');
+      targetSummaryId = await handleSaveSummary(pdfSummary, pdfFilename, selectedTeamId === '' ? null : Number(selectedTeamId), null, pdfTags, username);
+      if (!targetSummaryId) {
+        showSnackbar('要約の保存に失敗したため、コメントを保存できませんでした。', 'error');
+        return;
+      }
+    }
+
+    if (!targetSummaryId) {
+      showSnackbar('コメントを保存するための要約IDがありません。', 'error');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ summary_id: targetSummaryId, content: commentContent }),
+      });
+
+      if (response.ok) {
+        showSnackbar('コメントを保存しました！', 'success');
+        // PdfViewerがsummaryIdを更新した後にコメントを再フェッチするようにトリガー
+        // これはPdfViewerのuseEffect(..., [summaryId, isLoggedIn])で処理される
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to add comment:', errorData.detail);
+        showSnackbar(`コメントの保存に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      showSnackbar('コメントの保存中にエラーが発生しました。', 'error');
     }
   };
 
   const handleUpdateHistoryItem = useCallback((updatedItem: HistoryItem) => {
-    setSummaryHistories(prevHistories => 
-      prevHistories.map(item => 
+    setSummaryHistories(prevHistories =>
+      prevHistories.map(item =>
         item.id === updatedItem.id ? updatedItem : item
       )
     );
@@ -421,7 +624,50 @@ function App() {
                   <img src="./product_logo.svg" alt="Product Logo" style={{ height: '34px', marginLeft: '8px', filter: 'drop-shadow(0 0 2px white)' }} /> {/* 追加 */}
                 </Link>
               </Typography>
-              {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}
+              {location.pathname === '/' && ( // pdfSummaryがある場合のみボタンを表示
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {pdfSummary && ( // pdfSummaryがある場合のみボタンを表示
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {isLoggedIn && myTeams.length > 0 && ( // ログインしていてチームがある場合のみ表示
+                        <FormControl variant="outlined" size="small" sx={{ minWidth: 150, mr: 1 }}>
+                          <InputLabel id="team-select-label">保存先を選択</InputLabel>
+                          <Select
+                            labelId="team-select-label"
+                            value={selectedTeamId}
+                            onChange={(e) => setSelectedTeamId(e.target.value as number | '')}
+                            label="保存先を選択"
+                          >
+                            <MenuItem value="個人用">個人用</MenuItem>
+                            {myTeams.map((team) => (
+                              <MenuItem key={team.id} value={team.id}>
+                                {team.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={() => {
+                          let teamName: string | null = null;
+                          if (selectedTeamId !== '' && selectedTeamId !== '個人用') {
+                            const selectedTeam = myTeams.find(team => team.id === Number(selectedTeamId));
+                            if (selectedTeam) {
+                              teamName = selectedTeam.name;
+                            }
+                          }
+                          handleSaveSummary(pdfSummary, pdfFilename, selectedTeamId === '' ? null : Number(selectedTeamId), teamName, pdfTags, username);
+                        }}
+                        startIcon={<SaveIcon />}
+                      >
+                        現在の内容を保存
+                      </Button>
+                    </Box>
+                  )}
+                  <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
+                </Box>
+              )}
               <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
                 <AccountCircleIcon fontSize="large" />
               </IconButton>
@@ -446,19 +692,28 @@ function App() {
         <Routes>
           <Route path="/" element={
             <Container maxWidth="xl" sx={{ mt: 3, px: 2 }}>
-              {viewMode === 'history' && (
-                <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+              {(previousPdfSummary !== undefined) && (
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'primary.main', borderRadius: 1 }}>
                   <Typography variant="body1" sx={{ display: 'inline', mr: 2 }}>
-                    履歴を表示中: {pdfFilename}
+                    履歴モード: {pdfFilename}
                   </Typography>
-                  <Button variant="outlined" size="small" onClick={handleExitHistoryView}>
-                    現在進行中のチャットに戻る
+                  <Button variant="contained" color="secondary" size="small" onClick={handleExitHistoryView}>
+                    元の作業に戻る
                   </Button>
                 </Box>
               )}
               <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                 <Box sx={{ flex: 1 }}>
-                  <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} tags={pdfTags} username={username} />
+                  <PdfViewer
+                    summary={pdfSummary}
+                    filename={pdfFilename}
+                    onSave={handleSaveSummary}
+                    summaryId={pdfSummaryId}
+                    tags={pdfTags}
+                    username={username}
+                    isLoggedIn={isLoggedIn} // Pass isLoggedIn prop
+                    onCommentAttemptWithoutSave={handleCommentAttemptWithoutSave} // New prop
+                  />
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <AiAssistant
@@ -476,7 +731,7 @@ function App() {
               </Box>
             </Container>
           } />
-          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} />} />
+          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} currentUsername={username} />} />
           <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
         </Routes>
       </Box>

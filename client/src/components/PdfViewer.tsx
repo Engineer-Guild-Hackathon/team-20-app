@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Paper, Typography, Box, Divider, Chip, Button, FormControl, InputLabel, Select, MenuItem, TextField, List, ListItem, CircularProgress, Menu, IconButton, Snackbar, Alert } from '@mui/material';
-import { PictureAsPdf, AutoAwesome, Save as SaveIcon, Comment as CommentIcon, AddReaction as AddReactionIcon } from '@mui/icons-material';
+import { Paper, Typography, Box, Divider, Chip, Button, MenuItem, TextField, List, ListItem, CircularProgress, Menu, IconButton, Snackbar, Alert } from '@mui/material';
+import { PictureAsPdf, AutoAwesome, Comment as CommentIcon, AddReaction as AddReactionIcon } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
 
 
@@ -11,13 +11,9 @@ interface PdfViewerProps {
   summaryId?: number; // 追加
   tags?: string[] | null; // 追加
   username?: string | null;
-  onSave: (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, username?: string | null) => Promise<void>; // 戻り値をPromise<void>に変更
-}
-
-interface Team {
-  id: number;
-  name: string;
-  role: string;
+  isLoggedIn: boolean; // New
+  onSave: (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, username?: string | null) => Promise<number | undefined>; // 戻り値をPromise<number | undefined>に変更
+  onCommentAttemptWithoutSave: (commentContent: string) => Promise<void>; // New
 }
 
 interface Comment {
@@ -36,10 +32,7 @@ interface Comment {
   reaction_counts: { [key: string]: number };
 }
 
-const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tags, onSave, username }) => {
-  const [myTeams, setMyTeams] = useState<Team[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | '' | '個人用'>('');
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tags, onSave, username, isLoggedIn, onCommentAttemptWithoutSave }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newCommentContent, setNewCommentContent] = useState<string>('');
   const [loadingComments, setLoadingComments] = useState<boolean>(false);
@@ -49,36 +42,6 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('info');
-
-  useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
-
-    const fetchMyTeams = async () => {
-      if (!token) return;
-
-      try {
-        const response = await fetch('http://localhost:8000/api/users/me/teams', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const data: Team[] = await response.json();
-          setMyTeams(data);
-        } else {
-          console.error('Failed to fetch teams for PdfViewer');
-        }
-      } catch (error) {
-        console.error('Error fetching teams for PdfViewer:', error);
-      }
-    };
-
-    if (token) {
-      fetchMyTeams();
-    }
-  }, [isLoggedIn]);
 
   const fetchComments = async (id: number) => {
     setLoadingComments(true);
@@ -118,20 +81,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
   }, [summaryId, isLoggedIn]);
 
-  const handleSaveClick = () => {
-    let teamName: string | null = null;
-    if (selectedTeamId !== '' && selectedTeamId !== '個人用') { // '個人用'はチームではないので除外
-      const selectedTeam = myTeams.find(team => team.id === Number(selectedTeamId));
-      if (selectedTeam) {
-        teamName = selectedTeam.name;
-      }
-    }
-    onSave(summary || '', filename || '', selectedTeamId === '' ? null : Number(selectedTeamId), teamName, tags, username);
-  };
+  
 
   const handleAddComment = async () => {
-    if (!summaryId || !newCommentContent.trim()) {
-      return; // 要約IDがないか、コメントが空の場合は何もしない
+    if (!newCommentContent.trim()) {
+      return; // コメントが空の場合は何もしない
     }
 
     const token = localStorage.getItem('access_token');
@@ -139,6 +93,15 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
       return; // ログインしていない場合は何もしない
     }
 
+    if (!summaryId) {
+      // summaryIdがない場合、親コンポーネントにコメント内容を渡して保存を試みてもらう
+      await onCommentAttemptWithoutSave(newCommentContent);
+      setNewCommentContent(''); // 入力フィールドをクリア
+      // コメントリストの更新は親コンポーネントがsummaryIdを更新した後にuseEffectで自動的に行われることを期待
+      return;
+    }
+
+    // summaryIdがある場合は既存のロジックでコメントを保存
     try {
       const response = await fetch('http://localhost:8000/api/comments', {
         method: 'POST',
@@ -281,146 +244,13 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
           <ReactMarkdown>
             {summary}
           </ReactMarkdown>
-          {summary && ( // 要約がある場合のみボタンを表示
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-              {isLoggedIn && myTeams.length > 0 && (
-                <FormControl variant="outlined" size="small" sx={{ minWidth: 140, mr: 1 }}>
-                  <InputLabel id="team-select-label">チームに保存</InputLabel>
-                  <Select
-                    labelId="team-select-label"
-                    value={selectedTeamId}
-                    onChange={(e) => setSelectedTeamId(e.target.value as number | '')}
-                    label="チームに保存"
-                  >
-                    <MenuItem value="個人用">個人用</MenuItem>
-                    {myTeams.map((team) => (
-                      <MenuItem key={team.id} value={team.id}>
-                        {team.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleSaveClick}
-                startIcon={<SaveIcon />}
-              >
-                この要約を保存
-              </Button>
-            </Box>
-          )}
-
-          {/* コメントセクション */}
-          {summaryId && isLoggedIn && (
-            <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <CommentIcon color="action" fontSize="small" />
-                <Typography variant="h6" component="h3">
-                  コメント
-                </Typography>
-              </Box>
-              <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
-              {loadingComments ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                  <CircularProgress size={20} />
-                </Box>
-              ) : comments.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">まだコメントはありません。</Typography>
-              ) : (
-                <List dense>
-                  {comments.map((comment) => (
-                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
-                      <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {comment.username} - {new Intl.DateTimeFormat('ja-JP', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          }).format(new Date(comment.created_at + "Z"))}
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>
-                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {Object.entries(comment.reaction_counts || {}).map(([type, count]) => (
-                          <Chip
-                            key={type}
-                            label={`${type} ${count}`}
-                            size="small"
-                            onClick={() => handleRemoveReaction(comment.id, type)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        ))}
-                        <IconButton
-                          aria-label="add reaction"
-                          size="small"
-                          onClick={(event) => handleClickReactionMenu(event, comment.id)}
-                          sx={{ p: '4px' }}
-                        >
-                          <AddReactionIcon fontSize="small" />
-                        </IconButton>
-                        <Menu
-                          anchorEl={anchorEl}
-                          open={openReactionMenu && currentCommentIdForReaction === comment.id}
-                          onClose={handleCloseReactionMenu}
-                          MenuListProps={{
-                            'aria-labelledby': 'basic-button',
-                            sx: {
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              maxWidth: '200px', // 適宜調整
-                            }
-                          }}
-                        >
-                          {['👍', '❤️', '😂', '🎉', '😊', '😢'].map((emoji) => (
-                            <MenuItem
-                              key={emoji}
-                              onClick={() => {
-                                handleAddReaction(comment.id, emoji);
-                                handleCloseReactionMenu();
-                              }}
-                              sx={{ p: '4px 8px' }} // MenuItemのパディングを調整
-                            >
-                              {emoji}
-                            </MenuItem>
-                          ))}
-                        </Menu>
-                      </Box>
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  label="コメントを追加"
-                  value={newCommentContent}
-                  onChange={(e) => setNewCommentContent(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleAddComment();
-                    }
-                  }}
-                />
-                <Button variant="contained" onClick={handleAddComment}>
-                  送信
-                </Button>
-              </Box>
-            </Box>
-          )}
         </Box>
       ) : (
-        <Box 
-          sx={{ 
-            flex: 1, 
-            display: 'flex', 
-            alignItems: 'center', 
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
             color: 'text.secondary'
           }}
@@ -431,6 +261,118 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
           </Typography>
         </Box>
       )}
+
+      {/* コメントセクション */}
+      {summary && ( // Only show comment section if summary exists
+        <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <CommentIcon color="action" fontSize="small" />
+            <Typography variant="h6" component="h3">
+              コメント
+            </Typography>
+          </Box>
+          <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
+          {!isLoggedIn ? (
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
+              コメント機能を利用するにはログインが必要です。
+            </Typography>
+          ) : loadingComments ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <CircularProgress size={20} />
+            </Box>
+          ) : comments.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">まだコメントはありません。</Typography>
+          ) : (
+            <List dense>
+              {comments.map((comment) => (
+                <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
+                  <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {comment.username} - {new Intl.DateTimeFormat('ja-JP', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      }).format(new Date(comment.created_at + "Z"))}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>
+                  <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {Object.entries(comment.reaction_counts || {}).map(([type, count]) => (
+                      <Chip
+                        key={type}
+                        label={`${type} ${count}`}
+                        size="small"
+                        onClick={() => handleRemoveReaction(comment.id, type)}
+                        sx={{ cursor: 'pointer' }}
+                      />
+                    ))}
+                    <IconButton
+                      aria-label="add reaction"
+                      size="small"
+                      onClick={(event) => handleClickReactionMenu(event, comment.id)}
+                      sx={{ p: '4px' }}
+                    >
+                      <AddReactionIcon fontSize="small" />
+                    </IconButton>
+                    <Menu
+                      anchorEl={anchorEl}
+                      open={openReactionMenu && currentCommentIdForReaction === comment.id}
+                      onClose={handleCloseReactionMenu}
+                      MenuListProps={{
+                        'aria-labelledby': 'basic-button',
+                        sx: {
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          maxWidth: '200px', // 適宜調整
+                        }
+                      }}
+                    >
+                      {['👍', '❤️', '😂', '🎉', '😊', '😢'].map((emoji) => (
+                        <MenuItem
+                          key={emoji}
+                          onClick={() => {
+                            handleAddReaction(comment.id, emoji);
+                            handleCloseReactionMenu();
+                          }}
+                          sx={{ p: '4px 8px' }} // MenuItemのパディングを調整
+                        >
+                          {emoji}
+                        </MenuItem>
+                      ))}
+                    </Menu>
+                  </Box>
+                </ListItem>
+              ))}
+            </List>
+          )}
+          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              label="コメントを追加"
+              value={newCommentContent}
+              onChange={(e) => setNewCommentContent(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleAddComment();
+                }
+              }}
+              disabled={!isLoggedIn} // Disable if not logged in
+            />
+            <Button
+              variant="contained"
+              onClick={handleAddComment}
+              disabled={!isLoggedIn} // Disable if not logged in
+            >
+              送信
+            </Button>
+          </Box>
+        </Box>
+      )} {/* Closing the conditional rendering for summary */} 
     <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={() => setSnackbarOpen(false)}>
         <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarSeverity} sx={{ width: '100%'}}>
           {snackbarMessage}

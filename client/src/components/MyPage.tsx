@@ -19,9 +19,10 @@ interface MyPageProps {
   onHistoryClick: (item: HistoryItem) => void;
   onUpdateHistory: (updatedItem: HistoryItem) => void;
   fetchHistories: () => Promise<void>; // 追加
+  currentUsername: string | null; // 追加
 }
 
-const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick, onUpdateHistory, fetchHistories }) => { // onHistoryClickを追加
+const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick, onUpdateHistory, fetchHistories, currentUsername }) => { // onHistoryClickを追加
   useEffect(() => {
     fetchHistories(); // コンポーネントがマウントされたときに履歴をフェッチ
   }, [fetchHistories]); // fetchHistoriesが変更されたときに再実行 (App.tsxでuseCallbackでラップされていないため、依存配列に入れる)
@@ -35,7 +36,7 @@ const MyPage: React.FC<MyPageProps> = ({ histories, onHistoryClick, onUpdateHist
         要約履歴
       </Typography>
       <Box sx={{ height: 'calc(100vh - 280px)' }}>
-        <SummaryHistory histories={histories} onHistoryClick={onHistoryClick} onUpdateHistory={onUpdateHistory} /> {/* onHistoryClickをそのまま渡す */}
+        <SummaryHistory histories={histories} onHistoryClick={onHistoryClick} onUpdateHistory={onUpdateHistory} currentUsername={currentUsername} /> {/* onHistoryClickをそのまま渡す */}
       </Box>
     </Container>
   );
