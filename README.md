@@ -55,3 +55,5 @@ This is a simple project to demonstrate a React frontend communicating with a Fa
 1.  Open `http://localhost:3000` in your browser.
 2.  Click the "Get Message" button.
 3.  You should see the message "Hello World" displayed on the page, which is fetched from the FastAPI backend.
+
+
