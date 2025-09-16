@@ -47,6 +47,7 @@ interface SummaryHistoryProps {
   histories: HistoryItem[];
   onHistoryClick: (item: HistoryItem) => void;
   onUpdateHistory: (updatedItem: HistoryItem) => void;
+  currentUsername: string | null; // 追加
 }
 
 // チャット履歴表示用のコンポーネント
@@ -162,7 +163,7 @@ const ChatHistoryDisplay: React.FC<{ chatHistoryId?: number }> = ({ chatHistoryI
   );
 };
 
-const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick, onUpdateHistory }) => {
+const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick, onUpdateHistory, currentUsername }) => {
   const [filter, setFilter] = useState('all');
   const [open, setOpen] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
@@ -222,8 +223,13 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
   });
 
   const handleHistoryItemClick = (item: HistoryItem) => {
-    setSelectedHistory(item);
-    setOpen(true);
+    // currentUsername propを使用
+    if (currentUsername && item.username && item.username === currentUsername) {
+      onHistoryClick(item); // メインページに転送
+    } else {
+      setSelectedHistory(item);
+      setOpen(true); // モーダルウィンドウで表示
+    }
   };
 
   const handleClose = () => {
@@ -615,21 +621,31 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
               )}
             </Box>
             <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
-            <Typography variant="subtitle2" gutterBottom>要約</Typography>
-            <DialogContentText
-              component="div"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                maxHeight: '30vh', // 変更
-                overflowY: 'auto',
-                border: '1px solid #00bcd4', // 枠線
-                borderRadius: 1, // 角丸
-                p: 2, // パディング
-                mt: 1, // 上マージン (必要であれば)
-              }}
-            >
-              <ReactMarkdown>{selectedHistory.summary}</ReactMarkdown>
-            </DialogContentText>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>要約</Typography>
+                <DialogContentText
+                  component="div"
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '30vh',
+                    overflowY: 'auto',
+                    border: '1px solid #00bcd4',
+                    borderRadius: 1,
+                    p: 2,
+                    mt: 1,
+                  }}
+                >
+                  <ReactMarkdown>{selectedHistory.summary}</ReactMarkdown>
+                </DialogContentText>
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>AI Assistant チャット履歴</Typography>
+                <Box sx={{ maxHeight: '30vh', overflowY: 'auto', border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
+                  <ChatHistoryDisplay chatHistoryId={selectedHistory.chat_history_id} />
+                </Box>
+              </Box>
+            </Box>
 
             <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
 
@@ -684,7 +700,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                             sx: {
                               display: 'flex',
                               flexWrap: 'wrap',
-                              maxWidth: '200px', // 適宜調整
+                              maxWidth: '200px',
                             }
                           }}
                         >
@@ -695,7 +711,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                                 handleAddReaction(comment.id, emoji);
                                 handleCloseReactionMenu();
                               }}
-                              sx={{ p: '4px 8px' }} // MenuItemのパディングを調整
+                              sx={{ p: '4px 8px' }}
                             >
                               {emoji}
                             </MenuItem>
@@ -721,13 +737,6 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
               <Button variant="contained" onClick={handleAddComment}>
                 投稿
               </Button>
-            </Box>
-
-            <Divider sx={{ my: 2, borderColor: '#00bcd4' }} />
-
-            <Typography variant="subtitle2" gutterBottom>AI Assistant チャット履歴</Typography>
-            <Box sx={{ maxHeight: '40vh', overflowY: 'auto', mb: 2, border: '1px solid #00bcd4', borderRadius: 1, p: 1 }}>
-              <ChatHistoryDisplay chatHistoryId={selectedHistory.chat_history_id} />
             </Box>
           </DialogContent>
           <DialogActions>

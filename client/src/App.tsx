@@ -599,7 +599,7 @@ function App() {
                   <Typography variant="body1" sx={{ display: 'inline', mr: 2 }}>
                     履歴を表示中: {pdfFilename}
                   </Typography>
-                  <Button variant="outlined" size="small" onClick={handleExitHistoryView}>
+                  <Button variant="contained" color="primary" size="small" onClick={handleExitHistoryView}>
                     現在進行中のチャットに戻る
                   </Button>
                 </Box>
@@ -633,7 +633,7 @@ function App() {
               </Box>
             </Container>
           } />
-          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} />} />
+          <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} currentUsername={username} />} />
           <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
         </Routes>
       </Box>
