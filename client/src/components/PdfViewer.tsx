@@ -203,6 +203,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     <Paper 
       sx={{ 
         height: '100%', 
+        flexGrow: 1,
         p: 2,
         border: '1px solid #00bcd4',
         borderRadius: 2,
@@ -264,26 +265,26 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
 
       {/* コメントセクション */}
       {summary && ( // Only show comment section if summary exists
-        <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flex: '0 0 auto' }}>
             <CommentIcon color="action" fontSize="small" />
             <Typography variant="h6" component="h3">
               コメント
             </Typography>
           </Box>
-          <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
+          <Divider sx={{ mb: 2, borderColor: '#00bcd4', flex: '0 0 auto' }} />
           {!isLoggedIn ? (
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2, flex: '0 0 auto' }}>
               コメント機能を利用するにはログインが必要です。
             </Typography>
           ) : loadingComments ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', flex: '0 0 auto' }}>
               <CircularProgress size={20} />
             </Box>
           ) : comments.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">まだコメントはありません。</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ flex: '0 0 auto' }}>まだコメントはありません。</Typography>
           ) : (
-            <List dense>
+            <List dense sx={{ flex: 1, overflowY: 'auto', maxHeight: '300px' }}>
               {comments.map((comment) => (
                 <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
                   <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -348,7 +349,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
               ))}
             </List>
           )}
-          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          <Box sx={{ mt: 2, display: 'flex', gap: 1, flex: '0 0 auto' }}>
             <TextField
               fullWidth
               variant="outlined"
