@@ -92,12 +92,13 @@ function App() {
       return [];
     }
   });
-  const [pdfFilePath, setPdfFilePath] = useState<string>(() => {
+  const [pdfFilePath, setPdfFilePath] = useState<string[]>(() => {
     try {
-      return sessionStorage.getItem('currentPdfFilePath') || '';
+      const saved = sessionStorage.getItem('currentPdfFilePath');
+      return saved ? JSON.parse(saved) : [];
     } catch (e) {
       console.error('Failed to restore PDF file path from sessionStorage:', e);
-      return '';
+      return [];
     }
   });
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
@@ -149,7 +150,7 @@ function App() {
   const [previousPdfFilename, setPreviousPdfFilename] = useState<string | undefined>(undefined);
   const [previousPdfSummaryId, setPreviousPdfSummaryId] = useState<number | undefined>(undefined);
   const [previousPdfTags, setPreviousPdfTags] = useState<string[] | undefined>(undefined);
-  const [previousPdfFilePath, setPreviousPdfFilePath] = useState<string | undefined>(undefined);
+  const [previousPdfFilePath, setPreviousPdfFilePath] = useState<string[] | undefined>(undefined);
   const [previousChatMessages, setPreviousChatMessages] = useState<Message[] | undefined>(undefined);
   const [previousViewMode, setPreviousViewMode] = useState<'new' | 'history' | 'current' | undefined>(undefined);
 
@@ -311,7 +312,7 @@ function App() {
     setPdfFilename('');
     setPdfSummaryId(undefined);
     setPdfTags([]);
-    setPdfFilePath('');
+    setPdfFilePath([]);
     setSummaryHistories([]);
     setViewMode('new');
     setHistoricalContents(undefined);
@@ -333,12 +334,12 @@ function App() {
     setSnackbarOpen(false);
   };
 
-  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string) => {
+  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
     setPdfSummaryId(summaryId);
-    setPdfTags(tags || []); // 追加
-    setPdfFilePath(filePath || ''); // ファイルパス追加
+    setPdfTags(tags || []);
+    setPdfFilePath(filePath || []); // filePathをstring[]として設定
 
     // sessionStorage に PDF 関連データを保存
     try {
@@ -350,7 +351,7 @@ function App() {
         sessionStorage.removeItem('currentPdfSummaryId');
       }
       sessionStorage.setItem('currentPdfTags', JSON.stringify(tags || []));
-      sessionStorage.setItem('currentPdfFilePath', filePath || '');
+      sessionStorage.setItem('currentPdfFilePath', JSON.stringify(filePath || [])); // filePathをJSON文字列として保存
     } catch (e) {
       console.error('Failed to save PDF data to sessionStorage:', e);
     }
@@ -395,7 +396,7 @@ function App() {
       setPdfFilename(data.filename);
       setPdfSummaryId(data.id);
       setPdfTags(item.tags || []); // 履歴アイテムのタグを引き継ぐ
-      setPdfFilePath(data.original_file_path || ''); // ファイルパスも設定
+      setPdfFilePath(data.original_file_path || []); // ファイルパスも設定
 
       // AIチャット履歴のロード
       const aiChatHistoryContent = data.contents?.find((content: HistoryContent) => content.section_type === 'ai_chat');
@@ -419,7 +420,7 @@ function App() {
         if (data.tags) {
           sessionStorage.setItem('currentPdfTags', JSON.stringify(data.tags.split(',').filter((t: string) => t.trim())));
         }
-        sessionStorage.setItem('currentPdfFilePath', data.original_file_path || '');
+        sessionStorage.setItem('currentPdfFilePath', JSON.stringify(data.original_file_path || []));
         sessionStorage.setItem('currentChatMessages', JSON.stringify(chatMessages)); // ロードしたチャットメッセージも保存
       } catch (e) {
         console.error('Failed to save history PDF data to sessionStorage:', e);
@@ -456,7 +457,7 @@ function App() {
     setPdfFilename(previousPdfFilename || '');
     setPdfSummaryId(previousPdfSummaryId);
     setPdfTags(previousPdfTags || []);
-    setPdfFilePath(previousPdfFilePath || '');
+    setPdfFilePath(previousPdfFilePath || []);
     setChatMessages(previousChatMessages || []);
     setViewMode(previousViewMode || 'new'); // previousViewModeがundefinedの場合は'new'に
 
@@ -479,7 +480,7 @@ function App() {
         sessionStorage.removeItem('currentPdfSummaryId');
       }
       sessionStorage.setItem('currentPdfTags', JSON.stringify(previousPdfTags || []));
-      sessionStorage.setItem('currentPdfFilePath', previousPdfFilePath || '');
+      sessionStorage.setItem('currentPdfFilePath', JSON.stringify(previousPdfFilePath || []));
       sessionStorage.setItem('currentChatMessages', JSON.stringify(previousChatMessages || []));
     } catch (e) {
       console.error('Failed to restore session data on exit history view:', e);
@@ -540,7 +541,7 @@ function App() {
       if (!summaryResponse.ok) {
         const errorData = await summaryResponse.json();
         console.error("Error saving summary:", errorData);
-        throw new Error(`要約の保存に失敗しました: ${errorData.detail || '不明なエラー'}`);
+        throw new Error(`要約の保存に失敗しました: ${errorData.detail ? (typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail)) : '不明なエラー'}`);
       }
 
       const summaryData = await summaryResponse.json();
@@ -565,7 +566,7 @@ function App() {
 
     } catch (error) {
         console.error('Error saving history:', error);
-        showSnackbar(error instanceof Error ? error.message : '保存中にエラーが発生しました。', 'error');
+        showSnackbar(error instanceof Error ? error.message : (typeof error === 'string' ? error : '保存中に不明なエラーが発生しました。'), 'error');
         return undefined; // Return undefined on error
     }
   };

@@ -196,7 +196,7 @@ class SaveSummaryRequest(BaseModel):
     summary: str
     team_id: Optional[int] = None # 追加
     tags: Optional[List[str]] = None # 追加
-    original_file_path: Optional[str] = None # PDFファイルパス
+    original_file_path: Optional[List[str]] = None # PDFファイルパス
     ai_chat_history: Optional[str] = None # 追加: AI Assistantのチャット履歴 (JSON文字列)
 
 class TagsUpdateRequest(BaseModel):
@@ -259,6 +259,7 @@ class SummaryListItemResponse(BaseModel):
     team_name: Optional[str] = None
     tags: List[str] = []
     chat_history_id: Optional[int] = None  # チャット履歴IDを追加
+    original_file_path: Optional[List[str]] = None # 追加
 
     class Config:
         from_attributes = True
@@ -274,6 +275,7 @@ class SummaryHistoryDetailResponse(BaseModel):
     summary: str
     created_at: datetime
     contents: Optional[List[HistoryContentResponse]] = None # 変更
+    original_file_path: Optional[List[str]] = None # 追加
 
     class Config:
         from_attributes = True
@@ -535,27 +537,40 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         # summary_idが指定されていて、PDFファイルが存在する場合は直接参照
         if request.summary_id:
             summary = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_id).first()
-            if summary and summary.original_file_path and os.path.exists(summary.original_file_path):
+            if summary and summary.original_file_path:
+                logging.info(f"summary.original_file_path: {summary.original_file_path}")
                 try:
-                    # PDFファイルを読み込んでBase64エンコード
-                    with open(summary.original_file_path, 'rb') as f:
-                        file_content = f.read()
-                    base64_content = base64.b64encode(file_content).decode('utf-8')
-                    
-                    logging.info(f"Using PDF file directly: {summary.original_file_path}")
-                    
-                    # PDFファイルと要約の両方を参照
-                    response = client.models.generate_content(
-                        model='gemini-2.0-flash-001',
-                        contents=[
-                            {
-                                'parts': [
-                                    {'text': f"このPDFファイルの内容と以下の要約を参考に質問に答えてください。より詳細な情報が必要な場合はPDFファイルの内容を優先してください。\n\n要約:\n{request.pdf_summary or summary.summary}\n\n質問:\n{request.message}"},
-                                    {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
-                                ]
-                            }
+                    # original_file_pathをJSON文字列からリストに変換
+                    file_paths = json.loads(summary.original_file_path)
+                    if not isinstance(file_paths, list): # 念のためリストであることを確認
+                        file_paths = [file_paths] # 単一のパスの場合もリストに変換
+                    logging.info(f"Deserialized file_paths: {file_paths}")
+
+                    pdf_parts = []
+                    for file_path in file_paths:
+                        logging.info(f"Checking file_path: {file_path}")
+                        if os.path.exists(file_path):
+                            logging.info(f"File exists: {file_path}")
+                            with open(file_path, 'rb') as f:
+                                file_content = f.read()
+                            base64_content = base64.b64encode(file_content).decode('utf-8')
+                            pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
+                            logging.info(f"Using PDF file directly: {file_path}")
+                        else:
+                            logging.warning(f"PDF file not found: {file_path}")
+
+                    if pdf_parts: # PDFファイルが1つ以上存在する場合
+                        contents_parts = [
+                            {'text': f"以下のPDFファイルの内容と要約を参考に質問に答えてください。より詳細な情報が必要な場合はPDFファイルの内容を優先してください。\n\n要約:\n{request.pdf_summary or summary.summary}\n\n質問:\n{request.message}"},
                         ]
-                    )
+                        contents_parts.extend(pdf_parts) # PDFデータを追加
+
+                        response = client.models.generate_content(
+                            model='gemini-2.0-flash-001',
+                            contents=[
+                                {'parts': contents_parts}
+                            ]
+                        )
                     
                     if hasattr(response, 'text') and response.text:
                         return {"reply": response.text}
@@ -588,44 +603,57 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
     """PDF アップロードと要約生成エンドポイント（認証なし）"""
     try:
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(status_code=400, detail="PDFファイルのみアップロード可能です")
+        if not files:
+            raise HTTPException(status_code=400, detail="ファイルが選択されていません")
+
+        all_base64_contents = []
+        all_filenames = []
+        all_file_paths = []
         
-        if file.size > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="ファイルサイズが大きすぎます (10MB以下にしてください)")
-        
-        file_content = await file.read()
-        base64_content = base64.b64encode(file_content).decode('utf-8')
-        
-        # PDFファイルを保存（チャット時に参照するため）
-        unique_filename = f"{uuid.uuid4()}_{file.filename}"
-        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-        
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        
-        logging.info(f"PDF file saved to: {file_path}")
+        for file in files:
+            if not file.filename.lower().endswith('.pdf'):
+                raise HTTPException(status_code=400, detail=f"'{file.filename}': PDFファイルのみアップロード可能です")
+            
+            if file.size > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイルサイズが大きすぎます (10MB以下にしてください)")
+            
+            file_content = await file.read()
+            base64_content = base64.b64encode(file_content).decode('utf-8')
+            all_base64_contents.append(base64_content)
+            all_filenames.append(file.filename)
+
+            # PDFファイルを保存（チャット時に参照するため）
+            unique_filename = f"{uuid.uuid4()}_{file.filename}"
+            file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+            
+            with open(file_path, "wb") as f:
+                f.write(file_content)
+            
+            logging.info(f"PDF file saved to: {file_path}")
+            all_file_paths.append(file_path)
         
         client = genai.Client(api_key=API_KEY)
         
+        # Gemini APIへのプロンプトとコンテンツの構築
+        parts = [
+            {'text': '以下の複数のPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。タグが生成できない場合でも、必ず `[タグ: なし]` と記述してください。'},
+        ]
+        for base64_content in all_base64_contents:
+            parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
+
         response = client.models.generate_content(
             model='gemini-2.0-flash-001',
             contents=[
-                {
-                    'parts': [
-                        {'text': 'このPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。タグが生成できない場合でも、必ず `[タグ: なし]` と記述してください。'},
-                        {'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}}
-                    ]
-                }
+                {'parts': parts}
             ]
         )
         
-        logging.info(f"PDF summary generated for file: {file.filename}")
+        logging.info(f"Combined PDF summary generated for files: {', '.join(all_filenames)}")
         
         if hasattr(response, 'text') and response.text:
             full_response_text = response.text
@@ -646,11 +674,11 @@ async def upload_pdf(
             summary = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
         
         return {
-            "filename": file.filename,
+            "filename": ", ".join(all_filenames), # 複数のファイル名を結合
             "summary": summary,
             "status": "success",
-            "tags": generated_tags, # 生成されたタグをレスポンスに追加
-            "file_path": file_path  # PDFファイルパスを追加
+            "tags": generated_tags,
+            "file_path": all_file_paths  # 複数のファイルパスをリストで返す
         }
         
     except HTTPException:
@@ -690,7 +718,12 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                 username=username,
                 team_name=team_name,
                 tags=summary.tags.split(',') if summary.tags else [],
-                chat_history_id=summary.chat_history_id
+                chat_history_id=summary.chat_history_id,
+                original_file_path=(
+                    json.loads(summary.original_file_path)
+                    if summary.original_file_path and summary.original_file_path.startswith('[')
+                    else ([summary.original_file_path] if summary.original_file_path else None)
+                )
             ))
 
         # ユーザーが所属するチームのIDを取得
@@ -723,7 +756,12 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                     username=username,
                     team_name=team_name,
                     tags=summary.tags.split(',') if summary.tags else [],
-                    chat_history_id=summary.chat_history_id
+                    chat_history_id=summary.chat_history_id,
+                    original_file_path=(
+                        json.loads(summary.original_file_path)
+                        if summary.original_file_path and summary.original_file_path.startswith('[')
+                        else ([summary.original_file_path] if summary.original_file_path else None)
+                    )
                 ))
 
         # 両方のリストを結合して返す
@@ -952,7 +990,7 @@ async def save_summary(
             summary=request.summary,
             team_id=request.team_id,
             tags=",".join(request.tags) if request.tags else None, # tagsを追加
-            original_file_path=request.original_file_path, # PDFファイルパスを追加
+            original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None, # List[str]をJSON文字列に変換
             created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
         )
         db.add(new_history)
@@ -1277,7 +1315,23 @@ async def get_summary_detail(
     if not is_owner and not is_team_member:
         raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
 
-    return summary_history
+    # original_file_pathをJSON文字列からリストに変換
+    deserialized_file_path = (
+        json.loads(summary_history.original_file_path)
+        if summary_history.original_file_path and summary_history.original_file_path.startswith('[')
+        else ([summary_history.original_file_path] if summary_history.original_file_path else None)
+    )
+
+    return SummaryHistoryDetailResponse(
+        id=summary_history.id,
+        user_id=summary_history.user_id,
+        team_id=summary_history.team_id,
+        filename=summary_history.filename,
+        summary=summary_history.summary,
+        created_at=summary_history.created_at.astimezone(timezone.utc) if summary_history.created_at.tzinfo is None else summary_history.created_at,
+        contents=summary_history.contents,
+        original_file_path=deserialized_file_path
+    )
 
 @app.put("/api/summaries/{summary_id}/tags")
 async def update_summary_tags(
