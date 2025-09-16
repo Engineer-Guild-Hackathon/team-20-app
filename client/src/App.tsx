@@ -11,10 +11,14 @@ import {
   MenuItem,
   Snackbar,
   Alert,
-  Button
+  Button,
+  FormControl, // Added
+  InputLabel, // Added
+  Select // Added
 } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import SaveIcon from '@mui/icons-material/Save'; // Added
 import PdfViewer from './components/PdfViewer';
 import AiAssistant, { Message } from './components/AiAssistant';
 import Workspace from './components/Workspace';
@@ -44,6 +48,12 @@ interface HistoryContent {
   content: string;
   created_at: string;
   updated_at: string;
+}
+
+interface Team {
+  id: number;
+  name: string;
+  role: string;
 }
 
 function App() {
@@ -121,6 +131,8 @@ function App() {
   const openMenu = Boolean(anchorEl);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [username, setUsername] = useState<string | null>(null);
+  const [myTeams, setMyTeams] = useState<Team[]>([]); // New
+  const [selectedTeamId, setSelectedTeamId] = useState<number | '' | '個人用'>(''); // New
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
@@ -130,6 +142,42 @@ function App() {
     const token = localStorage.getItem('access_token');
     setIsLoggedIn(!!token);
   }, []);
+
+  // New useEffect for fetching teams
+  useEffect(() => {
+    const fetchMyTeams = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setMyTeams([]);
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:8000/api/users/me/teams', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data: Team[] = await response.json();
+          setMyTeams(data);
+        } else {
+          console.error('Failed to fetch teams for App.tsx');
+          setMyTeams([]);
+        }
+      } catch (error) {
+        console.error('Error fetching teams for App.tsx:', error);
+        setMyTeams([]);
+      }
+    };
+
+    if (isLoggedIn) {
+      fetchMyTeams();
+    } else {
+      setMyTeams([]); // ログアウト時はチームをクリア
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -321,14 +369,14 @@ function App() {
     setViewMode('current'); // 現在進行中モードに切り替え
   }, []);
 
-  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null) => {
+  const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null): Promise<number | undefined> => {
     if (!isLoggedIn) {
       showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);
-      return;
+      return undefined; // Return undefined on failure
     }
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+    if (!token) return undefined; // Return undefined on failure
 
     let currentUsername = usernameFromProps; // PdfViewerから渡されたusernameを優先
 
@@ -394,16 +442,73 @@ function App() {
         username: currentUsername || undefined // ここを修正
       };
       setSummaryHistories(prev => [newHistoryItem, ...prev]);
+      return newSummaryId; // Return the new summary ID
 
     } catch (error) {
         console.error('Error saving history:', error);
         showSnackbar(error instanceof Error ? error.message : '保存中にエラーが発生しました。', 'error');
+        return undefined; // Return undefined on error
+    }
+  };
+
+  const handleCommentAttemptWithoutSave = async (commentContent: string) => {
+    if (!isLoggedIn) {
+      showSnackbar('コメント機能を利用するにはログインが必要です。', 'warning');
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    let targetSummaryId = pdfSummaryId;
+
+    // もし要約がまだ保存されていない場合、まず要約を保存する
+    if (!targetSummaryId && pdfSummary && pdfFilename) {
+      showSnackbar('コメントを保存するために、まず要約を保存します。', 'info');
+      targetSummaryId = await handleSaveSummary(pdfSummary, pdfFilename, selectedTeamId === '' ? null : Number(selectedTeamId), null, pdfTags, username);
+      if (!targetSummaryId) {
+        showSnackbar('要約の保存に失敗したため、コメントを保存できませんでした。', 'error');
+        return;
+      }
+    }
+
+    if (!targetSummaryId) {
+      showSnackbar('コメントを保存するための要約IDがありません。', 'error');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      showSnackbar('ログインしていません。', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ summary_id: targetSummaryId, content: commentContent }),
+      });
+
+      if (response.ok) {
+        showSnackbar('コメントを保存しました！', 'success');
+        // PdfViewerがsummaryIdを更新した後にコメントを再フェッチするようにトリガー
+        // これはPdfViewerのuseEffect(..., [summaryId, isLoggedIn])で処理される
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to add comment:', errorData.detail);
+        showSnackbar(`コメントの保存に失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      showSnackbar('コメントの保存中にエラーが発生しました。', 'error');
     }
   };
 
   const handleUpdateHistoryItem = useCallback((updatedItem: HistoryItem) => {
-    setSummaryHistories(prevHistories => 
-      prevHistories.map(item => 
+    setSummaryHistories(prevHistories =>
+      prevHistories.map(item =>
         item.id === updatedItem.id ? updatedItem : item
       )
     );
@@ -421,7 +526,50 @@ function App() {
                   <img src="./product_logo.svg" alt="Product Logo" style={{ height: '34px', marginLeft: '8px', filter: 'drop-shadow(0 0 2px white)' }} /> {/* 追加 */}
                 </Link>
               </Typography>
-              {location.pathname === '/' && <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />}
+              {location.pathname === '/' && ( // pdfSummaryがある場合のみボタンを表示
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {pdfSummary && ( // pdfSummaryがある場合のみボタンを表示
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {isLoggedIn && myTeams.length > 0 && ( // ログインしていてチームがある場合のみ表示
+                        <FormControl variant="outlined" size="small" sx={{ minWidth: 150, mr: 1 }}>
+                          <InputLabel id="team-select-label">保存先を選択</InputLabel>
+                          <Select
+                            labelId="team-select-label"
+                            value={selectedTeamId}
+                            onChange={(e) => setSelectedTeamId(e.target.value as number | '')}
+                            label="保存先を選択"
+                          >
+                            <MenuItem value="個人用">個人用</MenuItem>
+                            {myTeams.map((team) => (
+                              <MenuItem key={team.id} value={team.id}>
+                                {team.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={() => {
+                          let teamName: string | null = null;
+                          if (selectedTeamId !== '' && selectedTeamId !== '個人用') {
+                            const selectedTeam = myTeams.find(team => team.id === Number(selectedTeamId));
+                            if (selectedTeam) {
+                              teamName = selectedTeam.name;
+                            }
+                          }
+                          handleSaveSummary(pdfSummary, pdfFilename, selectedTeamId === '' ? null : Number(selectedTeamId), teamName, pdfTags, username);
+                        }}
+                        startIcon={<SaveIcon />}
+                      >
+                        現在の内容を保存
+                      </Button>
+                    </Box>
+                  )}
+                  <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
+                </Box>
+              )}
               <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
                 <AccountCircleIcon fontSize="large" />
               </IconButton>
@@ -458,7 +606,16 @@ function App() {
               )}
               <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
                 <Box sx={{ flex: 1 }}>
-                  <PdfViewer summary={pdfSummary} filename={pdfFilename} onSave={handleSaveSummary} summaryId={pdfSummaryId} tags={pdfTags} username={username} />
+                  <PdfViewer
+                    summary={pdfSummary}
+                    filename={pdfFilename}
+                    onSave={handleSaveSummary}
+                    summaryId={pdfSummaryId}
+                    tags={pdfTags}
+                    username={username}
+                    isLoggedIn={isLoggedIn} // Pass isLoggedIn prop
+                    onCommentAttemptWithoutSave={handleCommentAttemptWithoutSave} // New prop
+                  />
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <AiAssistant
