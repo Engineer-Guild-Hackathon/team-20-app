@@ -305,6 +305,27 @@ function App() {
     } catch (e) {
       console.error('Failed to clear session data on logout:', e);
     }
+
+    // メイン画面のステートを初期化
+    setPdfSummary('');
+    setPdfFilename('');
+    setPdfSummaryId(undefined);
+    setPdfTags([]);
+    setPdfFilePath('');
+    setSummaryHistories([]);
+    setViewMode('new');
+    setHistoricalContents(undefined);
+    setChatMessages([]);
+    setSelectedTeamId('');
+
+    // 履歴モードの一時保存ステートも初期化
+    setPreviousPdfSummary(undefined);
+    setPreviousPdfFilename(undefined);
+    setPreviousPdfSummaryId(undefined);
+    setPreviousPdfTags(undefined);
+    setPreviousPdfFilePath(undefined);
+    setPreviousChatMessages(undefined);
+    setPreviousViewMode(undefined);
   };
 
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
@@ -702,7 +723,7 @@ function App() {
                   </Button>
                 </Box>
               )}
-              <Box sx={{ display: 'flex', gap: 2, height: 'calc(100vh - 150px)' }}>
+              <Box sx={{ display: 'flex', gap: 2, height: `calc(100vh - ${previousPdfSummary !== undefined ? '225px' : '150px'})` }}>
                 <Box sx={{ flex: 1 }}>
                   <PdfViewer
                     summary={pdfSummary}
