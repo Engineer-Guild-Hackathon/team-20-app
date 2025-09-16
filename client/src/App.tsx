@@ -14,7 +14,12 @@ import {
   Button,
   FormControl, // Added
   InputLabel, // Added
-  Select // Added
+  Select, // Added
+  Dialog, // Added
+  DialogActions, // Added
+  DialogContent, // Added
+  DialogContentText, // Added
+  DialogTitle // Added
 } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -137,6 +142,7 @@ function App() {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false); // New state for clear workspace confirmation
   const navigate = useNavigate();
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
@@ -328,6 +334,43 @@ function App() {
     setPreviousChatMessages(undefined);
     setPreviousViewMode(undefined);
   };
+
+  const _clearWorkspaceConfirmed = useCallback(() => {
+    setPdfSummary('');
+    setPdfFilename('');
+    setPdfSummaryId(undefined);
+    setPdfTags([]);
+    setPdfFilePath([]);
+    setChatMessages([]);
+    setViewMode('new');
+    setHistoricalContents(undefined);
+    setSelectedTeamId('');
+
+    try {
+      sessionStorage.removeItem('currentPdfSummary');
+      sessionStorage.removeItem('currentPdfFilename');
+      sessionStorage.removeItem('currentPdfSummaryId');
+      sessionStorage.removeItem('currentPdfTags');
+      sessionStorage.removeItem('currentPdfFilePath');
+      sessionStorage.removeItem('currentChatMessages');
+    } catch (e) {
+      console.error('Failed to clear session data:', e);
+    }
+    showSnackbar('作業スペースをクリアしました。', 'info');
+  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar]);
+
+  const handleClearWorkspace = useCallback(() => {
+    setIsClearConfirmOpen(true);
+  }, []);
+
+  const handleCloseClearConfirm = useCallback(() => {
+    setIsClearConfirmOpen(false);
+  }, []);
+
+  const handleConfirmClear = useCallback(() => {
+    _clearWorkspaceConfirmed();
+    handleCloseClearConfirm();
+  }, [_clearWorkspaceConfirmed, handleCloseClearConfirm]);
 
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
@@ -715,7 +758,7 @@ function App() {
                       </Button>
                     </Box>
                   )}
-                  <FileUploadButton onSummaryGenerated={handleSummaryGenerated} />
+                  <FileUploadButton onSummaryGenerated={handleSummaryGenerated} onClearWorkspace={handleClearWorkspace} />
                 </Box>
               )}
               <IconButton color="inherit" aria-label="account" onClick={handleMenu}>
@@ -769,6 +812,7 @@ function App() {
                   <AiAssistant
                     pdfSummaryContent={pdfSummary}
                     summaryId={pdfSummaryId}
+                    currentPdfFilePaths={pdfFilePath} // New prop
                     viewMode={viewMode}
                     historicalContents={historicalContents}
                     currentMessages={chatMessages}
@@ -792,6 +836,30 @@ function App() {
           {snackbarMessage}
         </Alert>
       </Snackbar>
+
+      <Dialog
+        open={isClearConfirmOpen}
+        onClose={handleCloseClearConfirm}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+      >
+        <DialogTitle id="alert-dialog-title">
+          {"作業スペースをクリアしますか？"}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="alert-dialog-description">
+            現在の作業内容（PDF要約、チャット履歴など）がすべて削除されます。この操作は元に戻せません。
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseClearConfirm} color="primary">
+            キャンセル
+          </Button>
+          <Button onClick={handleConfirmClear} color="primary" autoFocus>
+            クリア
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

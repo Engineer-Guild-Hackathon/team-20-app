@@ -36,11 +36,12 @@ interface AiAssistantProps {
   summaryId?: number;
   viewMode: 'new' | 'history' | 'current';
   historicalContents?: HistoryContent[];
-  currentMessages: Message[]; // 現在進行中のメッセージを受け取る
+  currentMessages: Message[];
   onMessagesChange: (messages: Message[]) => void;
+  currentPdfFilePaths?: string[];
 }
 
-const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange }) => {
+const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange, currentPdfFilePaths }: AiAssistantProps) => {
   const [input, setInput] = useState('');
   const [displayMessages, setDisplayMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +65,12 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: message, pdf_summary: pdfSummaryContent, summary_id: summaryId }),
+        body: JSON.stringify({
+          message: message,
+          pdf_summary: pdfSummaryContent,
+          summary_id: summaryId,
+          original_file_paths: summaryId === undefined ? currentPdfFilePaths : undefined, // Only send if no summaryId
+        }),
       });
 
       if (!response.ok) {
@@ -177,6 +183,14 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId,
                       }}>
                         {children}
                       </code>
+                    ),
+                    a: ({ children }) => (
+                      <a style={{
+                        wordBreak: "break-all",
+                        color: "#00bcd4"
+                      }} href={children as string}>
+                        {children}
+                      </a>
                     ),
                 }}>
                   {msg.text}
