@@ -184,6 +184,14 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
                         {children}
                       </code>
                     ),
+                    a: ({ children }) => (
+                      <a style={{
+                        wordBreak: "break-all",
+                        color: "#00bcd4"
+                      }} href={children as string}>
+                        {children}
+                      </a>
+                    ),
                 }}>
                   {msg.text}
                 </ReactMarkdown>
