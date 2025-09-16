@@ -181,6 +181,7 @@ class ChatRequest(BaseModel):
     message: str
     pdf_summary: Optional[str] = None
     summary_id: Optional[int] = None
+    original_file_paths: Optional[List[str]] = None # 追加
 
 class LoginRequest(BaseModel):
     username: str
@@ -580,6 +581,44 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                 except Exception as pdf_error:
                     logging.error(f"Error processing PDF file: {str(pdf_error)}")
                     # PDFファイルの読み込みに失敗した場合は要約のみで処理
+        elif request.original_file_paths: # 新しい条件: original_file_pathsが指定されている場合
+            logging.info(f"request.original_file_paths: {request.original_file_paths}")
+            try:
+                file_paths = request.original_file_paths
+                pdf_parts = []
+                for file_path in file_paths:
+                    logging.info(f"Checking file_path from request: {file_path}")
+                    if os.path.exists(file_path):
+                        logging.info(f"File exists: {file_path}")
+                        with open(file_path, 'rb') as f:
+                            file_content = f.read()
+                        base64_content = base64.b64encode(file_content).decode('utf-8')
+                        pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
+                        logging.info(f"Using PDF file from request.original_file_paths: {file_path}")
+                    else:
+                        logging.warning(f"PDF file not found from request.original_file_paths: {file_path}")
+
+                if pdf_parts: # PDFファイルが1つ以上存在する場合
+                    contents_parts = [
+                        {'text': f"以下のPDFファイルの内容と要約を参考に質問に答えてください。より詳細な情報が必要な場合はPDFファイルの内容を優先してください。\n\n要約:\n{request.pdf_summary or ''}\n\n質問:\n{request.message}"},
+                    ]
+                    contents_parts.extend(pdf_parts) # PDFデータを追加
+
+                    response = client.models.generate_content(
+                        model='gemini-2.0-flash-001',
+                        contents=[
+                            {'parts': contents_parts}
+                        ]
+                    )
+                
+                if hasattr(response, 'text') and response.text:
+                    return {"reply": response.text}
+                elif hasattr(response, 'candidates') and response.candidates:
+                    return {"reply": response.candidates[0].content.parts[0].text}
+            
+            except Exception as pdf_error:
+                logging.error(f"Error processing PDF file from request.original_file_paths: {str(pdf_error)}")
+                # PDFファイルの読み込みに失敗した場合は要約のみで処理
         
         # 従来の要約のみの処理
         full_content = request.message

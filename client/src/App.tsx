@@ -769,6 +769,7 @@ function App() {
                   <AiAssistant
                     pdfSummaryContent={pdfSummary}
                     summaryId={pdfSummaryId}
+                    currentPdfFilePaths={pdfFilePath} // New prop
                     viewMode={viewMode}
                     historicalContents={historicalContents}
                     currentMessages={chatMessages}
