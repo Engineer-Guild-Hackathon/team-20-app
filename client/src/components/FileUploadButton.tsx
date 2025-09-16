@@ -3,7 +3,7 @@ import { Button, CircularProgress, Alert, Snackbar } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 
 interface FileUploadButtonProps {
-  onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string) => void;
+  onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => void;
 }
 
 const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated }) => {
@@ -17,28 +17,43 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setError('PDFファイルのみアップロード可能です');
-      setShowError(true);
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError('ファイルサイズが大きすぎます (10MB以下にしてください)');
-      setShowError(true);
-      return;
-    }
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploading(true);
     setError('');
+    setShowError(false); // Reset error display
 
     const formData = new FormData();
-    formData.append('file', file);
+    let hasValidationError = false;
+    let validationErrorMessages: string[] = [];
 
-    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        validationErrorMessages.push(`${file.name}: PDFファイルのみアップロード可能です。`);
+        hasValidationError = true;
+        continue;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        validationErrorMessages.push(`${file.name}: ファイルサイズが大きすぎます (10MB以下にしてください)。`);
+        hasValidationError = true;
+        continue;
+      }
+      formData.append('files', file); // Append each file with the key 'files'
+    }
+
+    if (hasValidationError) {
+      setError(validationErrorMessages.join('\n'));
+      setShowError(true);
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
 
     try {
       const response = await fetch('http://localhost:8000/api/upload-pdf', {
@@ -52,8 +67,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
       }
 
       const result = await response.json();
-
-      // Pass the summary, filename, (no id yet), tags, and file_path back to the parent
+      // The backend now returns a single summary for all files
       onSummaryGenerated(result.summary, result.filename, undefined, result.tags, result.file_path);
       
     } catch (error) {
@@ -75,6 +89,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
         ref={fileInputRef}
         onChange={handleFileChange}
         accept=".pdf"
+        multiple
         style={{ display: 'none' }}
       />
       
