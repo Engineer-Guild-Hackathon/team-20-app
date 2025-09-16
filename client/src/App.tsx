@@ -373,7 +373,7 @@ function App() {
       setPdfSummary(data.summary);
       setPdfFilename(data.filename);
       setPdfSummaryId(data.id);
-      setPdfTags(data.tags ? data.tags.split(',').filter((t: string) => t.trim()) : []); // タグも設定
+      setPdfTags(item.tags || []); // 履歴アイテムのタグを引き継ぐ
       setPdfFilePath(data.original_file_path || ''); // ファイルパスも設定
 
       // AIチャット履歴のロード
