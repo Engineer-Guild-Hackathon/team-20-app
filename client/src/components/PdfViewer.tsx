@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Paper, Typography, Box, Divider, Chip, Button, MenuItem, TextField, List, ListItem, CircularProgress, Menu, IconButton, Snackbar, Alert } from '@mui/material';
 import { PictureAsPdf, AutoAwesome, Comment as CommentIcon, AddReaction as AddReactionIcon } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
@@ -36,6 +36,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
   const [comments, setComments] = useState<Comment[]>([]);
   const [newCommentContent, setNewCommentContent] = useState<string>('');
   const [loadingComments, setLoadingComments] = useState<boolean>(false);
+  const commentsEndRef = useRef<HTMLUListElement>(null); // New ref
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openReactionMenu = Boolean(anchorEl);
   const [currentCommentIdForReaction, setCurrentCommentIdForReaction] = useState<number | null>(null);
@@ -81,7 +82,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
   }, [summaryId, isLoggedIn]);
 
-  
+  useEffect(() => {
+    if (commentsEndRef.current) {
+      commentsEndRef.current.scrollTop = commentsEndRef.current.scrollHeight;
+    }
+  }, [comments]); // Scroll to bottom when comments change
 
   const handleAddComment = async () => {
     if (!newCommentContent.trim()) {
@@ -265,7 +270,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
 
       {/* コメントセクション */}
       {summary && ( // Only show comment section if summary exists
-        <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: "50%", marginTop: 'auto' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flex: '0 0 auto' }}>
             <CommentIcon color="action" fontSize="small" />
             <Typography variant="h6" component="h3">
@@ -284,7 +289,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
           ) : comments.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ flex: '0 0 auto' }}>まだコメントはありません。</Typography>
           ) : (
-            <List dense sx={{ flex: 1, overflowY: 'auto', maxHeight: '300px' }}>
+            <List dense component="ul" sx={{ flex: 1, overflowY: 'auto', maxHeight: '300px', flexDirection: 'column-reverse', justifyContent: 'flex-end' }} ref={commentsEndRef}>
               {comments.map((comment) => (
                 <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
                   <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
