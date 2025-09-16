@@ -47,8 +47,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId,
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleSend = async (messageToSend?: string, displayMessage?: string) => {
-    // 履歴表示中はチャット送信を無効
-    if (viewMode === 'history') return;
 
     const message = messageToSend || input;
     if (!message.trim()) return;
@@ -193,9 +191,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId,
           )}
         </List>
       </Box>
-      {viewMode !== 'history' && (
-        <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-around', mb: 2 }}>
             <Button variant="outlined" onClick={() => handleSend('要約された文章からpythonで疑似的に動作させるコードを生成してください。使えるライブラリは組み込みライブラリのみです．', 'Pythonコード生成')}>
               Pythonコード生成
             </Button>
@@ -226,15 +222,6 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ pdfSummaryContent, summaryId,
               Send
             </Button>
           </Box>
-        </>
-      )}
-      {viewMode === 'history' && (
-        <Box sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.100', borderRadius: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            履歴表示中です。チャット機能は無効になっています。
-          </Typography>
-        </Box>
-      )}
     </Paper>
   );
 };
