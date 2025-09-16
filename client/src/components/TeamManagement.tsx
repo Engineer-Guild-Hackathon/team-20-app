@@ -6,6 +6,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 
 interface TeamManagementProps {
   showSnackbar: (message: string, severity: 'success' | 'error' | 'info' | 'warning') => void;
+  onSummaryGeneratedFromTeamUpload?: (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => void;
 }
 
 interface Team {
@@ -39,7 +40,7 @@ interface Message {
   created_at: string; // ISO 8601 string
 }
 
-const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
+const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar, onSummaryGeneratedFromTeamUpload }) => {
   const [teamName, setTeamName] = useState<string>('');
   const [myTeams, setMyTeams] = useState<Team[]>([]);
   const [loadingTeams, setLoadingTeams] = useState<boolean>(true);
@@ -50,6 +51,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [memberUsernameToAdd, setMemberUsernameToAdd] = useState<string>('');
   const [currentTab, setCurrentTab] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File[] | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false); // New state
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
   const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState<boolean>(false); // New state for create team dialog
@@ -286,6 +288,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   };
 
   const handleFileUpload = async () => {
+    console.log('handleFileUpload started, isUploading:', isUploading);
     if (!selectedTeam || !selectedFile || selectedFile.length === 0) {
       showSnackbar('チームとファイルを選択してください。', 'warning');
       return;
@@ -296,6 +299,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       showSnackbar('ログインしていません。', 'error');
       return;
     }
+
+    setIsUploading(true); // Set loading true at the start
+    console.log('isUploading set to true');
 
     const formData = new FormData();
     selectedFile.forEach((file, index) => {
@@ -314,9 +320,20 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       if (response.ok) {
         const data = await response.json();
         const uploadedFileNames = data.uploaded_files.map((f: any) => f.filename).join(', ');
-        showSnackbar(`${uploadedFileNames} が正常にアップロードされました！`, 'success');
+        showSnackbar(`${uploadedFileNames} が正常にアップロードされ、要約が生成されました！`, 'success');
         setSelectedFile(null); // ファイル選択をクリア
         fetchSharedFiles(selectedTeam.id); // ファイルリストを更新
+
+        // Pass summary details to parent component
+        if (data.summary_details && onSummaryGeneratedFromTeamUpload) {
+          onSummaryGeneratedFromTeamUpload(
+            data.summary_details.summary,
+            data.summary_details.filename,
+            data.summary_details.summary_id,
+            data.summary_details.tags,
+            data.summary_details.file_path
+          );
+        }
       } else {
         const errorData = await response.json();
         showSnackbar(`ファイルのアップロードに失敗しました: ${errorData.detail || '不明なエラー'}`, 'error');
@@ -324,6 +341,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     } catch (error) {
       console.error('Error uploading file:', error);
       showSnackbar('ネットワークエラーが発生しました。', 'error');
+    } finally {
+      setIsUploading(false); // Set loading false at the end
+      console.log('isUploading set to false');
     }
   };
 
@@ -670,9 +690,10 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                   style={{ display: 'none' }}
                   id="file-upload-button"
                   multiple
+                  disabled={isUploading} // Disable during upload
                 />
                 <label htmlFor="file-upload-button">
-                  <Button variant="outlined" component="span">
+                  <Button variant="outlined" component="span" disabled={isUploading}>
                     {selectedFile ? (selectedFile.length === 1 ? selectedFile[0].name : `${selectedFile.length} 個のファイルを選択中`) : 'ファイルを選択'}
                   </Button>
                 </label>
@@ -680,10 +701,10 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                   variant="contained"
                   color="primary"
                   onClick={handleFileUpload}
-                  disabled={!selectedFile}
+                  disabled={!selectedFile || isUploading} // Disable during upload
                   sx={{ ml: 2 }}
                 >
-                  アップロード
+                  {isUploading ? <CircularProgress size={24} color="inherit" /> : 'アップロード'}
                 </Button>
               </Box>
 

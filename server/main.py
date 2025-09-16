@@ -1089,7 +1089,75 @@ async def upload_shared_file(
 
     db.commit() # Commit all changes at once
 
-    return {"message": "ファイルが正常にアップロードされました", "uploaded_files": uploaded_files_info}
+    # Summarization logic (similar to /api/upload-pdf)
+    all_base64_contents = []
+    for file_info in uploaded_files_info:
+        file_path = db.query(SharedFile).filter(SharedFile.id == file_info["file_id"]).first().filepath
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+        all_base64_contents.append(base64.b64encode(file_content).decode('utf-8'))
+
+    client = genai.Client(api_key=API_KEY)
+    
+    parts = [
+        {'text': '以下の複数のPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。タグが生成できない場合でも、必ず `[タグ: なし]` と記述してください。'},
+    ]
+    for base64_content in all_base64_contents:
+        parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
+
+    response = client.models.generate_content(
+        model='gemini-2.0-flash-001',
+        contents=[
+            {'parts': parts}
+        ]
+    )
+    
+    logging.info(f"Combined PDF summary generated for shared files: {', '.join([f['filename'] for f in uploaded_files_info])}")
+    
+    if hasattr(response, 'text') and response.text:
+        full_response_text = response.text
+    elif hasattr(response, 'candidates') and response.candidates:
+        full_response_text = response.candidates[0].content.parts[0].text
+    else:
+        full_response_text = "要約の生成に失敗しました"
+    
+    summary_text = full_response_text # 初期値はフルレスポンス
+    generated_tags = []
+    
+    tag_match = re.search(r'\[タグ:\s*(.*?)\s*\]', full_response_text)
+    if tag_match:
+        tags_str = tag_match.group(1)
+        generated_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+        summary_text = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
+    
+    # Save summary to SummaryHistory
+    combined_filenames = ", ".join([f["filename"] for f in uploaded_files_info])
+    combined_file_paths = json.dumps([f.filepath for f in db.query(SharedFile).filter(SharedFile.id.in_([f["file_id"] for f in uploaded_files_info])).all()])
+
+    new_history = SummaryHistory(
+        user_id=current_user.id,
+        filename=combined_filenames,
+        summary=summary_text,
+        team_id=team_id,
+        tags=",".join(generated_tags) if generated_tags else None,
+        original_file_path=combined_file_paths,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_history)
+    db.commit()
+    db.refresh(new_history)
+
+    return {
+        "message": "ファイルが正常にアップロードされ、要約が生成されました！",
+        "uploaded_files": uploaded_files_info,
+        "summary_details": {
+            "summary": summary_text,
+            "filename": combined_filenames,
+            "tags": generated_tags,
+            "file_path": json.loads(combined_file_paths), # Return as list
+            "summary_id": new_history.id
+        }
+    }
 
 
 @app.put("/api/history-contents")

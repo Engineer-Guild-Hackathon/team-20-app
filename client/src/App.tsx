@@ -334,6 +334,18 @@ function App() {
     setSnackbarOpen(false);
   };
 
+  const handleSummaryGeneratedFromTeamUpload = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
+    setPdfSummary(summary);
+    setPdfFilename(filename);
+    setPdfSummaryId(summaryId);
+    setPdfTags(tags || []);
+    setPdfFilePath(filePath || []);
+    setChatMessages([]); // Clear chat messages for new summary
+    setViewMode('new'); // Set view mode to new
+    setHistoricalContents(undefined); // Clear historical contents
+    navigate('/'); // Navigate to main page
+  };
+
   const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
@@ -754,7 +766,7 @@ function App() {
             </Container>
           } />
           <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} currentUsername={username} />} />
-          <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} />} />
+          <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} onSummaryGeneratedFromTeamUpload={handleSummaryGeneratedFromTeamUpload} />} />
         </Routes>
       </Box>
       <LoginModal open={isLoginModalOpen} onClose={handleCloseLoginModal} showSnackbar={showSnackbar} />
