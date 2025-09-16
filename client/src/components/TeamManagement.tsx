@@ -49,7 +49,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState<boolean>(false);
   const [memberUsernameToAdd, setMemberUsernameToAdd] = useState<string>('');
   const [currentTab, setCurrentTab] = useState(0);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File[] | null>(null);
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
   const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState<boolean>(false); // New state for create team dialog
@@ -279,12 +279,14 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
-      setSelectedFile(event.target.files[0]);
+      setSelectedFile(Array.from(event.target.files)); // Convert FileList to Array
+    } else {
+      setSelectedFile(null);
     }
   };
 
   const handleFileUpload = async () => {
-    if (!selectedTeam || !selectedFile) {
+    if (!selectedTeam || !selectedFile || selectedFile.length === 0) {
       showSnackbar('チームとファイルを選択してください。', 'warning');
       return;
     }
@@ -296,7 +298,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
     }
 
     const formData = new FormData();
-    formData.append('file', selectedFile);
+    selectedFile.forEach((file, index) => {
+      formData.append(`files`, file); // Use 'files' as the key for multiple files
+    });
 
     try {
       const response = await fetch(`http://localhost:8000/api/teams/${selectedTeam.id}/files`, {
@@ -308,7 +312,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
       });
 
       if (response.ok) {
-        showSnackbar('ファイルが正常にアップロードされました！', 'success');
+        const data = await response.json();
+        const uploadedFileNames = data.uploaded_files.map((f: any) => f.filename).join(', ');
+        showSnackbar(`${uploadedFileNames} が正常にアップロードされました！`, 'success');
         setSelectedFile(null); // ファイル選択をクリア
         fetchSharedFiles(selectedTeam.id); // ファイルリストを更新
       } else {
@@ -663,10 +669,11 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar }) => {
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
                   id="file-upload-button"
+                  multiple
                 />
                 <label htmlFor="file-upload-button">
                   <Button variant="outlined" component="span">
-                    {selectedFile ? selectedFile.name : 'ファイルを選択'}
+                    {selectedFile ? (selectedFile.length === 1 ? selectedFile[0].name : `${selectedFile.length} 個のファイルを選択中`) : 'ファイルを選択'}
                   </Button>
                 </label>
                 <Button

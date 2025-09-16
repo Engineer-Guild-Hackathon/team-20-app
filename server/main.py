@@ -1035,7 +1035,7 @@ async def save_summary(
 @app.post("/api/teams/{team_id}/files")
 async def upload_shared_file(
     team_id: int,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
@@ -1053,45 +1053,43 @@ async def upload_shared_file(
     if not team_membership:
         raise HTTPException(status_code=403, detail="このチームにファイルをアップロードする権限がありません")
 
-    # ファイルのバリデーション
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="ファイル名がありません")
-    
-    # ファイル名から拡張子を取得し、許可された拡張子か確認
-    file_extension = os.path.splitext(file.filename)[1].lower()
-    if file_extension not in [".pdf", ".txt", ".png", ".jpg", ".jpeg", ".gif"]: # 許可する拡張子を定義
-        raise HTTPException(status_code=400, detail="許可されていないファイル形式です。PDF, TXT, 画像ファイルのみアップロード可能です。")
+    uploaded_files_info = []
+    for file in files:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイル名がありません")
+        
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        if file_extension not in [".pdf", ".txt", ".png", ".jpg", ".jpeg", ".gif"]:
+            raise HTTPException(status_code=400, detail=f"'{file.filename}': 許可されていないファイル形式です。PDF, TXT, 画像ファイルのみアップロード可能です。")
 
-    # ファイルサイズの制限 (例: 50MB)
-    MAX_FILE_SIZE = 50 * 1024 * 1024 # 50 MB
-    file_content = await file.read()
-    if len(file_content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail=f"ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
+        MAX_FILE_SIZE = 50 * 1024 * 1024
+        file_content = await file.read()
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
 
-    # ファイルを保存
-    # ファイル名の衝突を避けるため、UUIDなどを利用することも検討
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
 
-    try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
-    except Exception as e:
-        logging.error(f"Error saving file to disk: {e}")
-        raise HTTPException(status_code=500, detail="ファイルの保存中にエラーが発生しました")
+        try:
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_content)
+        except Exception as e:
+            logging.error(f"Error saving file '{file.filename}' to disk: {e}")
+            raise HTTPException(status_code=500, detail=f"ファイルの保存中にエラーが発生しました: {file.filename}")
 
-    # データベースに記録
-    new_shared_file = SharedFile(
-        filename=file.filename,
-        filepath=file_path,
-        team_id=team_id,
-        uploaded_by_user_id=current_user.id
-    )
-    db.add(new_shared_file)
-    db.commit()
-    db.refresh(new_shared_file)
+        new_shared_file = SharedFile(
+            filename=file.filename,
+            filepath=file_path,
+            team_id=team_id,
+            uploaded_by_user_id=current_user.id
+        )
+        db.add(new_shared_file)
+        db.flush() # Flush to get ID before commit for all files
+        uploaded_files_info.append({"file_id": new_shared_file.id, "filename": new_shared_file.filename})
 
-    return {"message": "ファイルが正常にアップロードされました", "file_id": new_shared_file.id, "filename": new_shared_file.filename}
+    db.commit() # Commit all changes at once
+
+    return {"message": "ファイルが正常にアップロードされました", "uploaded_files": uploaded_files_info}
 
 
 @app.put("/api/history-contents")
