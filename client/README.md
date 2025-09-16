@@ -1,60 +1,70 @@
-# Client (React TypeScript)
+# Getting Started with Create React App
 
-このディレクトリには、Reactを使用したフロントエンドアプリケーションが含まれています。ユーザーインターフェースを提供し、バックエンドAPIと連携して動作します。
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## セットアップ
+## Available Scripts
 
-### 1. 依存関係のインストール
+In the project directory, you can run:
 
-`client`ディレクトリに移動し、以下のコマンドで依存関係をインストールします。
+### `npm start`
 
-```bash
-cd client
-npm install
-# または
-yarn install
-```
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
-### 2. 環境変数の設定（オプション）
+The page will reload when you make changes.\
+You may also see any lint errors in the console.
 
-必要に応じて、`.env`ファイルを作成し、環境変数を設定します。
-例:
-```
-REACT_APP_API_BASE_URL=http://localhost:8000
-```
+### `npm test`
 
-## 起動方法
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-依存関係のインストールが完了したら、以下のコマンドで開発サーバーを起動できます。
+### `npm run build`
 
-```bash
-npm start
-# または
-yarn start
-```
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
 
-アプリケーションは通常、`http://localhost:3000`で利用可能になります。
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
 
-## 主要コンポーネント
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-`src/components`ディレクトリには、アプリケーションを構成する主要なUIコンポーネントが含まれています。
+### `npm run eject`
 
--   `AiAssistant.tsx`: AIアシスタント機能
--   `FileUploadButton.tsx`: ファイルアップロード機能
--   `LoginModal.tsx`: ログインモーダル
--   `MyPage.tsx`: マイページ
--   `PdfViewer.tsx`: PDFビューア
--   `RegisterModal.tsx`: 登録モーダル
--   `SummaryHistory.tsx`: 要約履歴
--   `TeamManagement.tsx`: チーム管理
--   `Workspace.tsx`: ワークスペース
+**Note: this is a one-way operation. Once you `eject`, you can't go back!**
 
-## テスト
+If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
 
-テストを実行するには、以下のコマンドを使用します。
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
 
-```bash
-npm test
-# または
-yarn test
-```
+You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+
+## Learn More
+
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+
+To learn React, check out the [React documentation](https://reactjs.org/).
+
+### Code Splitting
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+
+### Analyzing the Bundle Size
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+
+### Making a Progressive Web App
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+
+### Advanced Configuration
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+
+### Deployment
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+
+### `npm run build` fails to minify
+
+This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)

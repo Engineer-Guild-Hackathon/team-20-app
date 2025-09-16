@@ -21,9 +21,3 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-node_modules
-
-README_React.md
-
-# 日本語ドキュメント（Git追跡対象外）
-プロジェクト起動手順.md

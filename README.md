@@ -1,110 +1,57 @@
-# Team 20 App
+# React + FastAPI Project
 
-フルスタック Web アプリケーション（React + Python FastAPI）
+This is a simple project to demonstrate a React frontend communicating with a FastAPI backend.
 
----
+## How to run this project
 
-## チーム情報
-- チーム番号: 20
-- チーム名: IPUT_OK
-- プロダクト名: Reproduce Hub
-- メンバー: 福留陽希、平山結也、中島主税、大松隼翔、山口ちひろ、赤松志優、共田仁俊
+### Backend (FastAPI)
 
----
+1.  Navigate to the `backend` directory:
+    ```bash
+    cd backend
+    ```
 
-## デモ　/ プレゼン資料
-- デモURL: https://drive.google.com/file/d/1PrUAps-BeSu1anTEaLNQqdW9gRCuqtuI/view?usp=drive_link
-- プレゼンURL：https://docs.google.com/presentation/d/1jvpwPno4Xsct4s_-x2TKKr6VRkYCWcj-/edit?usp=sharing&ouid=116940754129608060449&rtpof=true&sd=true
+2.  Create a virtual environment and activate it (optional but recommended):
+    ```bash
+    python -m venv venv
+    # On Windows
+    venv\Scripts\activate
+    # On macOS/Linux
+    source venv/bin/activate
+    ```
 
----
+3.  Install the dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-## 機能
-このアプリケーションは、以下の主要な機能を提供します。
+4.  Run the FastAPI server:
+    ```bash
+    uvicorn main:app --reload
+    ```
+    The backend will be running at `http://127.0.0.1:8000`.
 
-- **PDFファイルのアップロードとAIによる要約生成**: PDFファイルをアップロードし、AIがその内容を自動的に要約します。
-- **AIアシスタントとのチャット**: 要約されたPDFの内容に基づいてAIアシスタントと対話し、質問応答が可能です。
-- **ユーザー認証**: 新規登録、ログイン、ログアウト機能により、セキュアなアクセスを提供します。
-- **要約履歴管理**: 生成された要約は履歴として保存され、いつでも閲覧・再利用できます。
-- **チーム管理**: チームを作成し、メンバーを招待・管理できます。
-- **チーム内ファイル共有**: チームメンバー間でファイルを共有し、共同作業を促進します。
-- **チーム内メッセージング**: チーム専用のチャット機能で、メンバー間のコミュニケーションを円滑にします。
-- **要約へのコメントとリアクション**: 要約に対してコメントを残したり、リアクションを付けたりして、議論を深めることができます。
-- **要約へのタグ付け**: 要約にタグを付けて分類し、検索性を向上させます。
+### Frontend (React)
 
----
+1.  Open a new terminal.
+2.  Navigate to the `frontend` directory:
+    ```bash
+    cd frontend
+    ```
 
-## プロジェクト構造
+3.  Install dependencies (if you haven't already):
+    ```bash
+    npm install
+    ```
 
-```
-team-20-app/
-├── client/                 # フロントエンド (React + TypeScript)
-│   ├── src/               # Reactソースコード
-│   ├── public/            # 静的ファイル
-│   └── package.json       # フロントエンド依存関係
-├── server/                # バックエンド (Python FastAPI)
-│   ├── main.py           # FastAPIメインアプリ
-│   ├── requirements.txt   # Python依存関係
-│   └── README.md         # サーバー固有のドキュメント
-├── package.json          # ルートレベル設定
-└── README.md             # このファイル
+4.  Start the React development server:
+    ```bash
+    npm start
+    ```
+    The frontend will open in your browser at `http://localhost:3000`.
 
-```
+## How to use
 
-## 必要な環境
-
-- **Node.js** (v14以上) - フロントエンド用
-- **Python** (v3.8以上) - バックエンド用
-- **npm** - パッケージ管理
-
-## クイックスタート
-
-### 1. すべての依存関係をインストール
-
-```bash
-npm run install:all
-```
-
----
-
-### 2. 開発サーバーの起動
-
-```bash
-npm run dev
-```
-
-このコマンドで同時に起動されます：
-- フロントエンド: http://localhost:3000
-- バックエンド: http://localhost:8000
-
----
-
-## 個別の操作
-
-### フロントエンドのみ起動
-```bash
-npm run dev:client
-```
-
-### バックエンドのみ起動
-```bash
-npm run dev:server
-```
-
-### プロダクションビルド
-```bash
-npm run build
-```
-
----
-
-## API ドキュメント
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
----
-
-## ディレクトリ別の詳細情報
-
-- [フロントエンド (client/)](./client/README.md)
-- [バックエンド (server/)](./server/README.md)
+1.  Open `http://localhost:3000` in your browser.
+2.  Click the "Get Message" button.
+3.  You should see the message "Hello World" displayed on the page, which is fetched from the FastAPI backend.
