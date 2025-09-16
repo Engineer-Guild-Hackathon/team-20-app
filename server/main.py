@@ -30,7 +30,7 @@ if not os.path.exists(UPLOAD_DIRECTORY):
     logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
 
 # ログ設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI(title="Team 20 API", version="1.0.0")
 
@@ -974,59 +974,85 @@ async def save_summary(
 ):
     """要約をデータベースに保存するエンドポイント"""
     try:
-        # team_idが指定されている場合、ユーザーがそのチームのメンバーであることを確認
+        logging.info(f"SaveSummaryRequest received. team_id: {request.team_id}")
         if request.team_id:
-            team_membership = db.query(TeamMember).filter(
-                TeamMember.user_id == current_user.id,
-                TeamMember.team_id == request.team_id
-            ).first()
-            if not team_membership:
-                raise HTTPException(status_code=403, detail="指定されたチームに要約を保存する権限がありません")
+            logging.info(f"Saving as personal summaries for team members of team_id: {request.team_id}")
+            # チームメンバー全員の個人要約として保存
+            team_members = db.query(TeamMember).filter(TeamMember.team_id == request.team_id).all()
+            if not team_members:
+                raise HTTPException(status_code=404, detail="指定されたチームのメンバーが見つかりません")
 
-        # まず要約履歴を作成（chat_history_id は後で設定）
-        new_history = SummaryHistory(
-            user_id=current_user.id,
-            filename=request.filename,
-            summary=request.summary,
-            team_id=request.team_id,
-            tags=",".join(request.tags) if request.tags else None, # tagsを追加
-            original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None, # List[str]をJSON文字列に変換
-            created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
-        )
-        db.add(new_history)
-        db.commit()
-        db.refresh(new_history)
-
-        # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
-        chat_history_content_id = None
-        if request.ai_chat_history:
-            try:
-                # ai_chat_history は JSON 文字列として渡されることを想定
-                chat_content_data = json.loads(request.ai_chat_history)
-
-                new_chat_history_content = HistoryContent(
-                    summary_history_id=new_history.id,
-                    section_type='ai_chat',
-                    content=json.dumps(chat_content_data), # JSON文字列として保存
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+            saved_summary_ids = []
+            for member in team_members:
+                new_history = SummaryHistory(
+                    user_id=member.user_id, # 各メンバーのuser_idを使用
+                    filename=request.filename,
+                    summary=request.summary,
+                    team_id=None, # チーム要約ではなく個人要約として保存
+                    tags=",".join(request.tags) if request.tags else None,
+                    original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                    created_at=datetime.now(timezone.utc)
                 )
-                db.add(new_chat_history_content)
-                db.commit()
-                db.refresh(new_chat_history_content)
+                db.add(new_history)
+                db.flush() # IDを取得するためにflush
+                saved_summary_ids.append(new_history.id)
 
-                # SummaryHistoryにチャット履歴のIDを設定
-                chat_history_content_id = new_chat_history_content.id
-                new_history.chat_history_id = chat_history_content_id
-                db.commit()
+                # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+                if request.ai_chat_history:
+                    try:
+                        chat_content_data = json.loads(request.ai_chat_history)
+                        new_chat_history_content = HistoryContent(
+                            summary_history_id=new_history.id,
+                            section_type='ai_chat',
+                            content=json.dumps(chat_content_data), # JSON文字列として保存
+                            created_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc)
+                        )
+                        db.add(new_chat_history_content)
+                        db.flush()
+                        new_history.chat_history_id = new_chat_history_content.id
+                    except json.JSONDecodeError as e:
+                        logging.error(f"Failed to decode ai_chat_history JSON for user {member.user_id}: {e}")
+                    except Exception as e:
+                        logging.error(f"Error saving AI chat history for user {member.user_id}: {e}")
+            db.commit() # 全ての変更をコミット
+            return {"message": "要約がチームメンバー全員の個人履歴に保存されました", "ids": saved_summary_ids}
+        else:
+            logging.info("Saving as personal summary for current user.")
+            # 従来の個人要約として保存
+            new_history = SummaryHistory(
+                user_id=current_user.id,
+                filename=request.filename,
+                summary=request.summary,
+                team_id=None, # 個人要約なのでteam_idはNone
+                tags=",".join(request.tags) if request.tags else None,
+                original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(new_history)
+            db.flush()
+            saved_summary_id = new_history.id
 
-                logging.info(f"AI chat history saved for summary_id {new_history.id} with content_id {chat_history_content_id}")
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to decode ai_chat_history JSON: {e}")
-            except Exception as e:
-                logging.error(f"Error saving AI chat history: {e}")
-
-        return {"message": "要約が正常に保存されました", "id": new_history.id}
+            # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+            if request.ai_chat_history:
+                try:
+                    chat_content_data = json.loads(request.ai_chat_history)
+                    new_chat_history_content = HistoryContent(
+                        summary_history_id=new_history.id,
+                        section_type='ai_chat',
+                        content=json.dumps(chat_content_data), # JSON文字列として保存
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc)
+                    )
+                    db.add(new_chat_history_content)
+                    db.flush()
+                    new_history.chat_history_id = new_chat_history_content.id
+                except json.JSONDecodeError as e:
+                    logging.error(f"Failed to decode ai_chat_history JSON for user {current_user.id}: {e}")
+                except Exception as e:
+                    logging.error(f"Error saving AI chat history for user {current_user.id}: {e}")
+            db.commit()
+            return {"message": "要約が正常に保存されました", "id": saved_summary_id}
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"要約の保存中にエラーが発生しました: {str(e)}")
@@ -1035,7 +1061,7 @@ async def save_summary(
 @app.post("/api/teams/{team_id}/files")
 async def upload_shared_file(
     team_id: int,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
@@ -1053,45 +1079,111 @@ async def upload_shared_file(
     if not team_membership:
         raise HTTPException(status_code=403, detail="このチームにファイルをアップロードする権限がありません")
 
-    # ファイルのバリデーション
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="ファイル名がありません")
+    uploaded_files_info = []
+    for file in files:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイル名がありません")
+        
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        if file_extension not in [".pdf", ".txt", ".png", ".jpg", ".jpeg", ".gif"]:
+            raise HTTPException(status_code=400, detail=f"'{file.filename}': 許可されていないファイル形式です。PDF, TXT, 画像ファイルのみアップロード可能です。")
+
+        MAX_FILE_SIZE = 50 * 1024 * 1024
+        file_content = await file.read()
+        if len(file_content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
+
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+
+        try:
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_content)
+        except Exception as e:
+            logging.error(f"Error saving file '{file.filename}' to disk: {e}")
+            raise HTTPException(status_code=500, detail=f"ファイルの保存中にエラーが発生しました: {file.filename}")
+
+        new_shared_file = SharedFile(
+            filename=file.filename,
+            filepath=file_path,
+            team_id=team_id,
+            uploaded_by_user_id=current_user.id
+        )
+        db.add(new_shared_file)
+        db.flush() # Flush to get ID before commit for all files
+        uploaded_files_info.append({"file_id": new_shared_file.id, "filename": new_shared_file.filename})
+
+    db.commit() # Commit all changes at once
+
+    # Summarization logic (similar to /api/upload-pdf)
+    all_base64_contents = []
+    for file_info in uploaded_files_info:
+        file_path = db.query(SharedFile).filter(SharedFile.id == file_info["file_id"]).first().filepath
+        with open(file_path, 'rb') as f:
+            file_content = f.read()
+        all_base64_contents.append(base64.b64encode(file_content).decode('utf-8'))
+
+    client = genai.Client(api_key=API_KEY)
     
-    # ファイル名から拡張子を取得し、許可された拡張子か確認
-    file_extension = os.path.splitext(file.filename)[1].lower()
-    if file_extension not in [".pdf", ".txt", ".png", ".jpg", ".jpeg", ".gif"]: # 許可する拡張子を定義
-        raise HTTPException(status_code=400, detail="許可されていないファイル形式です。PDF, TXT, 画像ファイルのみアップロード可能です。")
+    parts = [
+        {'text': '以下の複数のPDFファイルの内容を日本語で要約してください。要点をmarkdownを活用した箇条書きで整理し、わかりやすく説明してください。要約内容に合ったタグを少なくとも3つ生成してください。最大数は5個です．生成したタグに関しては，markdownで見出しなどをつけずにプレーンなテキスト [タグ: tag1, tag2, tag3...] の形式で文末に含めてください。タグが生成できない場合でも、必ず `[タグ: なし]` と記述してください。'},
+    ]
+    for base64_content in all_base64_contents:
+        parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
 
-    # ファイルサイズの制限 (例: 50MB)
-    MAX_FILE_SIZE = 50 * 1024 * 1024 # 50 MB
-    file_content = await file.read()
-    if len(file_content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail=f"ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
-
-    # ファイルを保存
-    # ファイル名の衝突を避けるため、UUIDなどを利用することも検討
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-
-    try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
-    except Exception as e:
-        logging.error(f"Error saving file to disk: {e}")
-        raise HTTPException(status_code=500, detail="ファイルの保存中にエラーが発生しました")
-
-    # データベースに記録
-    new_shared_file = SharedFile(
-        filename=file.filename,
-        filepath=file_path,
-        team_id=team_id,
-        uploaded_by_user_id=current_user.id
+    response = client.models.generate_content(
+        model='gemini-2.0-flash-001',
+        contents=[
+            {'parts': parts}
+        ]
     )
-    db.add(new_shared_file)
-    db.commit()
-    db.refresh(new_shared_file)
+    
+    logging.info(f"Combined PDF summary generated for shared files: {', '.join([f['filename'] for f in uploaded_files_info])}")
+    
+    if hasattr(response, 'text') and response.text:
+        full_response_text = response.text
+    elif hasattr(response, 'candidates') and response.candidates:
+        full_response_text = response.candidates[0].content.parts[0].text
+    else:
+        full_response_text = "要約の生成に失敗しました"
+    
+    summary_text = full_response_text # 初期値はフルレスポンス
+    generated_tags = []
+    
+    tag_match = re.search(r'\[タグ:\s*(.*?)\s*\]', full_response_text)
+    if tag_match:
+        tags_str = tag_match.group(1)
+        generated_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+        summary_text = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
+    
+    # Save summary to SummaryHistory
+    combined_filenames = ", ".join([f["filename"] for f in uploaded_files_info])
+    combined_file_paths = json.dumps([f.filepath for f in db.query(SharedFile).filter(SharedFile.id.in_([f["file_id"] for f in uploaded_files_info])).all()])
 
-    return {"message": "ファイルが正常にアップロードされました", "file_id": new_shared_file.id, "filename": new_shared_file.filename}
+    new_history = SummaryHistory(
+        user_id=current_user.id,
+        filename=combined_filenames,
+        summary=summary_text,
+        team_id=team_id,
+        tags=",".join(generated_tags) if generated_tags else None,
+        original_file_path=combined_file_paths,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_history)
+    db.commit()
+    db.refresh(new_history)
+
+    return {
+        "message": "ファイルが正常にアップロードされ、要約が生成されました！",
+        "uploaded_files": uploaded_files_info,
+        "summary_details": {
+            "summary": summary_text,
+            "filename": combined_filenames,
+            "tags": generated_tags,
+            "file_path": json.loads(combined_file_paths), # Return as list
+            "summary_id": new_history.id
+        }
+    }
 
 
 @app.put("/api/history-contents")
