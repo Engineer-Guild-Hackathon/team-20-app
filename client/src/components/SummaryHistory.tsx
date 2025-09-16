@@ -537,7 +537,6 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                             color="text.secondary"
                             sx={{ flexShrink: 0, ml: 1 }}
                           >
-                            <>{console.log(item.created_at)}</>
                             {item.created_at && !isNaN(new Date(item.created_at).getTime())
                               ? new Intl.DateTimeFormat('ja-JP', {
                                   year: 'numeric',
@@ -659,7 +658,6 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                     <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #00bcd4', pb: 1, mb: 1 }}>
                       <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" color="text.secondary">
-                            <>{console.log("====" + comment.created_at)}</>
                           {comment.username} - {comment.created_at && !isNaN(new Date(comment.created_at + "Z").getTime())
                             ? new Intl.DateTimeFormat('ja-JP', {
                                 year: 'numeric',

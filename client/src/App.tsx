@@ -334,15 +334,28 @@ function App() {
     setSnackbarOpen(false);
   };
 
-  const handleSummaryGeneratedFromTeamUpload = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
+  const handleSummaryGeneratedFromTeamUpload = async (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
+    // First, set the current summary details in App state
     setPdfSummary(summary);
     setPdfFilename(filename);
-    setPdfSummaryId(summaryId);
+    setPdfSummaryId(summaryId); // This summaryId is from the team upload, we will overwrite it with the personal one
     setPdfTags(tags || []);
     setPdfFilePath(filePath || []);
     setChatMessages([]); // Clear chat messages for new summary
     setViewMode('new'); // Set view mode to new
     setHistoricalContents(undefined); // Clear historical contents
+
+    // Now, automatically save this summary as a personal summary for all team members
+    // The teamId parameter to handleSaveSummary should be null to trigger personal save logic
+    const savedId = await handleSaveSummary(summary, filename, null, null, tags, username); // Pass null for teamId and teamName
+
+    if (savedId) {
+      // If successfully saved as personal, update the current summaryId to the new personal one
+      setPdfSummaryId(savedId);
+      showSnackbar('要約がチームメンバー全員の個人履歴に自動保存されました！', 'success');
+    } else {
+      showSnackbar('要約の自動保存に失敗しました。', 'error');
+    }
     navigate('/'); // Navigate to main page
   };
 
@@ -502,6 +515,9 @@ function App() {
       previousPdfSummary, previousPdfFilename, previousPdfSummaryId, previousPdfTags, previousPdfFilePath, previousChatMessages, previousViewMode]);
 
   const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null): Promise<number | undefined> => {
+    console.log('handleSaveSummary called.');
+    console.log('selectedTeamId (from App state):', selectedTeamId); // Log selectedTeamId from App state
+    console.log('teamId (parameter to handleSaveSummary):', teamId); // Log teamId parameter
     if (!isLoggedIn) {
       showSnackbar('保存機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);

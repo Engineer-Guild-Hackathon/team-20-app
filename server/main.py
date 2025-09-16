@@ -30,7 +30,7 @@ if not os.path.exists(UPLOAD_DIRECTORY):
     logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
 
 # ログ設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI(title="Team 20 API", version="1.0.0")
 
@@ -974,59 +974,85 @@ async def save_summary(
 ):
     """要約をデータベースに保存するエンドポイント"""
     try:
-        # team_idが指定されている場合、ユーザーがそのチームのメンバーであることを確認
+        logging.info(f"SaveSummaryRequest received. team_id: {request.team_id}")
         if request.team_id:
-            team_membership = db.query(TeamMember).filter(
-                TeamMember.user_id == current_user.id,
-                TeamMember.team_id == request.team_id
-            ).first()
-            if not team_membership:
-                raise HTTPException(status_code=403, detail="指定されたチームに要約を保存する権限がありません")
+            logging.info(f"Saving as personal summaries for team members of team_id: {request.team_id}")
+            # チームメンバー全員の個人要約として保存
+            team_members = db.query(TeamMember).filter(TeamMember.team_id == request.team_id).all()
+            if not team_members:
+                raise HTTPException(status_code=404, detail="指定されたチームのメンバーが見つかりません")
 
-        # まず要約履歴を作成（chat_history_id は後で設定）
-        new_history = SummaryHistory(
-            user_id=current_user.id,
-            filename=request.filename,
-            summary=request.summary,
-            team_id=request.team_id,
-            tags=",".join(request.tags) if request.tags else None, # tagsを追加
-            original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None, # List[str]をJSON文字列に変換
-            created_at=datetime.now(timezone.utc) # 明示的にUTCを設定
-        )
-        db.add(new_history)
-        db.commit()
-        db.refresh(new_history)
-
-        # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
-        chat_history_content_id = None
-        if request.ai_chat_history:
-            try:
-                # ai_chat_history は JSON 文字列として渡されることを想定
-                chat_content_data = json.loads(request.ai_chat_history)
-
-                new_chat_history_content = HistoryContent(
-                    summary_history_id=new_history.id,
-                    section_type='ai_chat',
-                    content=json.dumps(chat_content_data), # JSON文字列として保存
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+            saved_summary_ids = []
+            for member in team_members:
+                new_history = SummaryHistory(
+                    user_id=member.user_id, # 各メンバーのuser_idを使用
+                    filename=request.filename,
+                    summary=request.summary,
+                    team_id=None, # チーム要約ではなく個人要約として保存
+                    tags=",".join(request.tags) if request.tags else None,
+                    original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                    created_at=datetime.now(timezone.utc)
                 )
-                db.add(new_chat_history_content)
-                db.commit()
-                db.refresh(new_chat_history_content)
+                db.add(new_history)
+                db.flush() # IDを取得するためにflush
+                saved_summary_ids.append(new_history.id)
 
-                # SummaryHistoryにチャット履歴のIDを設定
-                chat_history_content_id = new_chat_history_content.id
-                new_history.chat_history_id = chat_history_content_id
-                db.commit()
+                # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+                if request.ai_chat_history:
+                    try:
+                        chat_content_data = json.loads(request.ai_chat_history)
+                        new_chat_history_content = HistoryContent(
+                            summary_history_id=new_history.id,
+                            section_type='ai_chat',
+                            content=json.dumps(chat_content_data), # JSON文字列として保存
+                            created_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc)
+                        )
+                        db.add(new_chat_history_content)
+                        db.flush()
+                        new_history.chat_history_id = new_chat_history_content.id
+                    except json.JSONDecodeError as e:
+                        logging.error(f"Failed to decode ai_chat_history JSON for user {member.user_id}: {e}")
+                    except Exception as e:
+                        logging.error(f"Error saving AI chat history for user {member.user_id}: {e}")
+            db.commit() # 全ての変更をコミット
+            return {"message": "要約がチームメンバー全員の個人履歴に保存されました", "ids": saved_summary_ids}
+        else:
+            logging.info("Saving as personal summary for current user.")
+            # 従来の個人要約として保存
+            new_history = SummaryHistory(
+                user_id=current_user.id,
+                filename=request.filename,
+                summary=request.summary,
+                team_id=None, # 個人要約なのでteam_idはNone
+                tags=",".join(request.tags) if request.tags else None,
+                original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(new_history)
+            db.flush()
+            saved_summary_id = new_history.id
 
-                logging.info(f"AI chat history saved for summary_id {new_history.id} with content_id {chat_history_content_id}")
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to decode ai_chat_history JSON: {e}")
-            except Exception as e:
-                logging.error(f"Error saving AI chat history: {e}")
-
-        return {"message": "要約が正常に保存されました", "id": new_history.id}
+            # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+            if request.ai_chat_history:
+                try:
+                    chat_content_data = json.loads(request.ai_chat_history)
+                    new_chat_history_content = HistoryContent(
+                        summary_history_id=new_history.id,
+                        section_type='ai_chat',
+                        content=json.dumps(chat_content_data), # JSON文字列として保存
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc)
+                    )
+                    db.add(new_chat_history_content)
+                    db.flush()
+                    new_history.chat_history_id = new_chat_history_content.id
+                except json.JSONDecodeError as e:
+                    logging.error(f"Failed to decode ai_chat_history JSON for user {current_user.id}: {e}")
+                except Exception as e:
+                    logging.error(f"Error saving AI chat history for user {current_user.id}: {e}")
+            db.commit()
+            return {"message": "要約が正常に保存されました", "id": saved_summary_id}
     except Exception as e:
         logging.error(f"Error saving summary via /api/save-summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"要約の保存中にエラーが発生しました: {str(e)}")

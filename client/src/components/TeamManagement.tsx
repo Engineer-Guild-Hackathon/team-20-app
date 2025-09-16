@@ -52,6 +52,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar, onSummary
   const [currentTab, setCurrentTab] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File[] | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false); // New state
+  console.log('TeamManagement re-rendered. isUploading:', isUploading);
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [loadingSharedFiles, setLoadingSharedFiles] = useState<boolean>(false);
   const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState<boolean>(false); // New state for create team dialog
@@ -321,7 +322,6 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar, onSummary
         const data = await response.json();
         const uploadedFileNames = data.uploaded_files.map((f: any) => f.filename).join(', ');
         showSnackbar(`${uploadedFileNames} が正常にアップロードされ、要約が生成されました！`, 'success');
-        setSelectedFile(null); // ファイル選択をクリア
         fetchSharedFiles(selectedTeam.id); // ファイルリストを更新
 
         // Pass summary details to parent component
@@ -342,6 +342,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar, onSummary
       console.error('Error uploading file:', error);
       showSnackbar('ネットワークエラーが発生しました。', 'error');
     } finally {
+      setSelectedFile(null); // ファイル選択をクリア
       setIsUploading(false); // Set loading false at the end
       console.log('isUploading set to false');
     }
