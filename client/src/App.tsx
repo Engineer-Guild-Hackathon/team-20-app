@@ -138,6 +138,12 @@ function App() {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
   const navigate = useNavigate();
 
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
+  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
+
   // 履歴表示前の状態を保存するためのstate
   const [previousPdfSummary, setPreviousPdfSummary] = useState<string | undefined>(undefined);
   const [previousPdfFilename, setPreviousPdfFilename] = useState<string | undefined>(undefined);
@@ -147,10 +153,39 @@ function App() {
   const [previousChatMessages, setPreviousChatMessages] = useState<Message[] | undefined>(undefined);
   const [previousViewMode, setPreviousViewMode] = useState<'new' | 'history' | 'current' | undefined>(undefined);
 
-  useEffect(() => {
+  const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('access_token');
-    setIsLoggedIn(!!token);
-  }, []);
+    if (token) {
+      try {
+        const response = await fetch('http://localhost:8000/api/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setIsLoggedIn(true);
+          setUsername(data.username);
+        } else {
+          // トークンが無効な場合はログアウト状態にする
+          localStorage.removeItem('access_token');
+          setIsLoggedIn(false);
+          setUsername(null);
+          showSnackbar('セッションの有効期限が切れました。再度ログインしてください。', 'warning');
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error);
+        localStorage.removeItem('access_token');
+        setIsLoggedIn(false);
+        setUsername(null);
+      }
+    } else {
+      setIsLoggedIn(false);
+      setUsername(null);
+    }
+  }, [showSnackbar]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   // New useEffect for fetching teams
   useEffect(() => {
@@ -250,13 +285,13 @@ function App() {
 
   const handleCloseLoginModal = () => {
     setIsLoginModalOpen(false);
-    setIsLoggedIn(!!localStorage.getItem('access_token'));
+    checkAuth(); // ログイン後に認証状態を再チェック
   };
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
-    setIsLoggedIn(false);
     handleCloseMenu();
+    checkAuth(); // 認証状態を再チェック
     showSnackbar('ログアウトしました。', 'info');
 
     // ログアウト時は作業データもクリア（オプション）
@@ -271,12 +306,6 @@ function App() {
       console.error('Failed to clear session data on logout:', e);
     }
   };
-
-  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
-    setSnackbarMessage(message);
-    setSnackbarSeverity(severity);
-    setSnackbarOpen(true);
-  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
 
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
