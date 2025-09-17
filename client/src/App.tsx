@@ -61,76 +61,28 @@ interface Team {
   role: string;
 }
 
+interface SessionState {
+  pdfSummary: string;
+  pdfFilename: string;
+  pdfSummaryId?: number;
+  pdfTags: string[];
+  pdfFilePath: string[];
+  chatMessages: Message[];
+  viewMode: 'new' | 'history' | 'current';
+  selectedTeamId: number | '' | '個人用';
+}
+
 function App() {
   const location = useLocation();
-  const [pdfSummary, setPdfSummary] = useState<string>(() => {
-    try {
-      return sessionStorage.getItem('currentPdfSummary') || '';
-    } catch (e) {
-      console.error('Failed to restore PDF summary from sessionStorage:', e);
-      return '';
-    }
-  });
-  const [pdfFilename, setPdfFilename] = useState<string>(() => {
-    try {
-      return sessionStorage.getItem('currentPdfFilename') || '';
-    } catch (e) {
-      console.error('Failed to restore PDF filename from sessionStorage:', e);
-      return '';
-    }
-  });
-  const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(() => {
-    try {
-      const saved = sessionStorage.getItem('currentPdfSummaryId');
-      return saved ? parseInt(saved) : undefined;
-    } catch (e) {
-      console.error('Failed to restore PDF summary ID from sessionStorage:', e);
-      return undefined;
-    }
-  });
-  const [pdfTags, setPdfTags] = useState<string[]>(() => {
-    try {
-      const saved = sessionStorage.getItem('currentPdfTags');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error('Failed to restore PDF tags from sessionStorage:', e);
-      return [];
-    }
-  });
-  const [pdfFilePath, setPdfFilePath] = useState<string[]>(() => {
-    try {
-      const saved = sessionStorage.getItem('currentPdfFilePath');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error('Failed to restore PDF file path from sessionStorage:', e);
-      return [];
-    }
-  });
+  const [pdfSummary, setPdfSummary] = useState<string>('');
+  const [pdfFilename, setPdfFilename] = useState<string>('');
+  const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
+  const [pdfTags, setPdfTags] = useState<string[]>([]);
+  const [pdfFilePath, setPdfFilePath] = useState<string[]>([]);
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
-  const [viewMode, setViewMode] = useState<'new' | 'history' | 'current'>(() => {
-    // sessionStorage から復元、チャットメッセージがあればcurrentモードに
-    try {
-      const savedMessages = sessionStorage.getItem('currentChatMessages');
-      if (savedMessages) {
-        const messages = JSON.parse(savedMessages);
-        return messages.length > 0 ? 'current' : 'new';
-      }
-    } catch (e) {
-      console.error('Failed to restore viewMode from sessionStorage:', e);
-    }
-    return 'new';
-  });
+  const [viewMode, setViewMode] = useState<'new' | 'history' | 'current'>('new');
   const [historicalContents, setHistoricalContents] = useState<HistoryContent[] | undefined>(undefined);
-  const [chatMessages, setChatMessages] = useState<Message[]>(() => {
-    // sessionStorage から初期値を復元
-    try {
-      const saved = sessionStorage.getItem('currentChatMessages');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error('Failed to restore chat messages from sessionStorage:', e);
-      return [];
-    }
-  });
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -143,6 +95,8 @@ function App() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false); // New state for clear workspace confirmation
+  const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false); // New state for restore session confirmation
+  const [loadedSessionState, setLoadedSessionState] = useState<SessionState | null>(null); // Moved here
   const navigate = useNavigate();
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
@@ -150,6 +104,74 @@ function App() {
     setSnackbarSeverity(severity);
     setSnackbarOpen(true);
   }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
+
+  const saveSession = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token || !isLoggedIn) {
+      return; // ログインしていない場合は保存しない
+    }
+
+    const sessionState: SessionState = {
+      pdfSummary,
+      pdfFilename,
+      pdfSummaryId,
+      pdfTags,
+      pdfFilePath,
+      chatMessages,
+      viewMode,
+      selectedTeamId,
+    };
+
+    try {
+      await fetch('http://localhost:8000/api/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ session_data: JSON.stringify(sessionState) }),
+      });
+      console.log('Session data saved successfully.');
+    } catch (error) {
+      console.error('Failed to save session data:', error);
+    }
+  }, [isLoggedIn, pdfSummary, pdfFilename, pdfSummaryId, pdfTags, pdfFilePath, chatMessages, viewMode, selectedTeamId]);
+
+  const loadSession = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token || !isLoggedIn) {
+      return; // ログインしていない場合はロードしない
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/session', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.session_data && data.session_data !== "{}") {
+          const sessionState: SessionState = JSON.parse(data.session_data);
+          // 前回の作業内容が空でない場合にのみダイアログを表示
+          if (sessionState.pdfSummary !== '' || sessionState.chatMessages.length > 0) {
+            setLoadedSessionState(sessionState); // Store the loaded state
+            setIsRestoreConfirmOpen(true); // Open the dialog
+            console.log('Session data loaded, prompting for restore.');
+          } else {
+            console.log('Session data found but empty, not prompting for restore.');
+          }
+        } else { // This 'else' belongs to 'if (data.session_data && data.session_data !== "{}")'
+          console.log('No session data found or empty.');
+        }
+      } else { // This 'else' belongs to 'if (response.ok)'
+        console.error('Failed to load session data:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error loading session data:', error);
+    }
+  }, [isLoggedIn, setIsRestoreConfirmOpen, setLoadedSessionState]);
 
   // 履歴表示前の状態を保存するためのstate
   const [previousPdfSummary, setPreviousPdfSummary] = useState<string | undefined>(undefined);
@@ -171,6 +193,7 @@ function App() {
           const data = await response.json();
           setIsLoggedIn(true);
           setUsername(data.username);
+          loadSession(); // ログイン成功時にセッションをロード
         } else {
           // トークンが無効な場合はログアウト状態にする
           localStorage.removeItem('access_token');
@@ -188,11 +211,19 @@ function App() {
       setIsLoggedIn(false);
       setUsername(null);
     }
-  }, [showSnackbar]);
+  }, [showSnackbar, loadSession]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // beforeunload イベントでセッションを保存
+  useEffect(() => {
+    window.addEventListener('beforeunload', saveSession);
+    return () => {
+      window.removeEventListener('beforeunload', saveSession);
+    };
+  }, [saveSession]);
 
   // New useEffect for fetching teams
   useEffect(() => {
@@ -296,6 +327,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    saveSession(); // ログアウト前にセッションを保存
     localStorage.removeItem('access_token');
     handleCloseMenu();
     checkAuth(); // 認証状態を再チェック
@@ -376,6 +408,43 @@ function App() {
     if (reason === 'clickaway') return;
     setSnackbarOpen(false);
   };
+
+  const _clearWorkspaceConfirmed = useCallback(() => {
+    setPdfSummary('');
+    setPdfFilename('');
+    setPdfSummaryId(undefined);
+    setPdfTags([]);
+    setPdfFilePath([]);
+    setChatMessages([]);
+    setViewMode('new');
+    setHistoricalContents(undefined);
+    setSelectedTeamId('');
+
+    try {
+      sessionStorage.removeItem('currentPdfSummary');
+      sessionStorage.removeItem('currentPdfFilename');
+      sessionStorage.removeItem('currentPdfSummaryId');
+      sessionStorage.removeItem('currentPdfTags');
+      sessionStorage.removeItem('currentPdfFilePath');
+      sessionStorage.removeItem('currentChatMessages');
+    } catch (e) {
+      console.error('Failed to clear session data:', e);
+    }
+    showSnackbar('作業スペースをクリアしました。', 'info');
+  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar]);
+
+  const handleClearWorkspace = useCallback(() => {
+    setIsClearConfirmOpen(true);
+  }, []);
+
+  const handleCloseClearConfirm = useCallback(() => {
+    setIsClearConfirmOpen(false);
+  }, []);
+
+  const handleConfirmClear = useCallback(() => {
+    _clearWorkspaceConfirmed();
+    handleCloseClearConfirm();
+  }, [_clearWorkspaceConfirmed, handleCloseClearConfirm]);
 
   const handleSummaryGeneratedFromTeamUpload = async (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
     // First, set the current summary details in App state
@@ -642,6 +711,26 @@ function App() {
     }
   };
 
+  const handleCloseRestoreConfirm = useCallback(() => {
+    setIsRestoreConfirmOpen(false);
+  }, []);
+
+  const handleConfirmRestore = useCallback(() => {
+    setIsRestoreConfirmOpen(false);
+    if (loadedSessionState) { // Use the stored state
+      setPdfSummary(loadedSessionState.pdfSummary);
+      setPdfFilename(loadedSessionState.pdfFilename);
+      setPdfSummaryId(loadedSessionState.pdfSummaryId);
+      setPdfTags(loadedSessionState.pdfTags);
+      setPdfFilePath(loadedSessionState.pdfFilePath);
+      setChatMessages(loadedSessionState.chatMessages);
+      setViewMode(loadedSessionState.viewMode);
+      setSelectedTeamId(loadedSessionState.selectedTeamId);
+      showSnackbar('前回の作業内容を復元しました！', 'success');
+      setLoadedSessionState(null); // Clear the stored state after use
+    }
+  }, [loadedSessionState, setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setSelectedTeamId, showSnackbar]);
+
   const handleCommentAttemptWithoutSave = async (commentContent: string) => {
     if (!isLoggedIn) {
       showSnackbar('コメント機能を利用するにはログインが必要です。', 'warning');
@@ -857,6 +946,29 @@ function App() {
           </Button>
           <Button onClick={handleConfirmClear} color="primary" autoFocus>
             クリア
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={isRestoreConfirmOpen}
+        onClose={handleCloseRestoreConfirm}
+        aria-labelledby="restore-dialog-title"
+        aria-describedby="restore-dialog-description"
+      >
+        <DialogTitle id="restore-dialog-title">
+          {"前回の作業内容を復元しますか？"}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="restore-dialog-description">
+            前回ログアウトした時の作業内容（PDF要約、チャット履歴など）が見つかりました。復元しますか？
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseRestoreConfirm} color="primary">
+            復元しない
+          </Button>
+          <Button onClick={handleConfirmRestore} color="primary" autoFocus>
+            復元する
           </Button>
         </DialogActions>
       </Dialog>

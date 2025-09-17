@@ -103,7 +103,6 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated,
         multiple
         style={{ display: 'none' }}
       />
-      
       <Box sx={{ display: 'flex', alignItems: 'center' }}>
         <Button 
           variant="contained" 
