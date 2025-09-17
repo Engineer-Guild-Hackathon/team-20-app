@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
 from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -1599,4 +1599,9 @@ async def get_history_content_by_id(
     )
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # CPUコア数の半分に基づいてワーカー数を設定（最低1ワーカー）
+    num_workers = max(1, (os.cpu_count() or 1) // 2)
+    logging.info(f"Starting Uvicorn with {num_workers} workers (half of CPU cores).")
+    config = uvicorn.Config("main:app", host="0.0.0.0", port=8000, reload=True, workers=num_workers)
+    server = uvicorn.Server(config)
+    server.run()
