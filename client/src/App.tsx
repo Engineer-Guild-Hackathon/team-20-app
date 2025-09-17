@@ -367,6 +367,43 @@ function App() {
     setPreviousViewMode(undefined);
   };
 
+  const _clearWorkspaceConfirmed = useCallback(() => {
+    setPdfSummary('');
+    setPdfFilename('');
+    setPdfSummaryId(undefined);
+    setPdfTags([]);
+    setPdfFilePath([]);
+    setChatMessages([]);
+    setViewMode('new');
+    setHistoricalContents(undefined);
+    setSelectedTeamId('');
+
+    try {
+      sessionStorage.removeItem('currentPdfSummary');
+      sessionStorage.removeItem('currentPdfFilename');
+      sessionStorage.removeItem('currentPdfSummaryId');
+      sessionStorage.removeItem('currentPdfTags');
+      sessionStorage.removeItem('currentPdfFilePath');
+      sessionStorage.removeItem('currentChatMessages');
+    } catch (e) {
+      console.error('Failed to clear session data:', e);
+    }
+    showSnackbar('作業スペースをクリアしました。', 'info');
+  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar]);
+
+  const handleClearWorkspace = useCallback(() => {
+    setIsClearConfirmOpen(true);
+  }, []);
+
+  const handleCloseClearConfirm = useCallback(() => {
+    setIsClearConfirmOpen(false);
+  }, []);
+
+  const handleConfirmClear = useCallback(() => {
+    _clearWorkspaceConfirmed();
+    handleCloseClearConfirm();
+  }, [_clearWorkspaceConfirmed, handleCloseClearConfirm]);
+
   const handleCloseSnackbar = (event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === 'clickaway') return;
     setSnackbarOpen(false);
@@ -864,6 +901,7 @@ function App() {
                   <AiAssistant
                     pdfSummaryContent={pdfSummary}
                     summaryId={pdfSummaryId}
+                    currentPdfFilePaths={pdfFilePath} // New prop
                     viewMode={viewMode}
                     historicalContents={historicalContents}
                     currentMessages={chatMessages}
@@ -911,7 +949,6 @@ function App() {
           </Button>
         </DialogActions>
       </Dialog>
-
       <Dialog
         open={isRestoreConfirmOpen}
         onClose={handleCloseRestoreConfirm}
