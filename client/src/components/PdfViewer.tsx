@@ -231,7 +231,12 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
             variant="outlined" 
             color="primary" 
             size="small"
-            sx={{ maxWidth: '100%' }}
+            sx={{ 
+              maxWidth: '100%', 
+              overflow: 'hidden', 
+              whiteSpace: 'nowrap', 
+              textOverflow: 'ellipsis' 
+            }}
           />
         </Box>
       )}

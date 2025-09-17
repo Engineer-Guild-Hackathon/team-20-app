@@ -856,7 +856,7 @@ function App() {
                 </Box>
               )}
               <Box sx={{ display: 'flex', gap: 2, height: `calc(100vh - ${previousPdfSummary !== undefined ? '225px' : '150px'})` }}>
-                <Box sx={{ flex: 1 }}>
+                <Box sx={{ flex: 1, overflow: "hidden" }}>
                   <PdfViewer
                     summary={pdfSummary}
                     filename={pdfFilename}
@@ -868,7 +868,7 @@ function App() {
                     onCommentAttemptWithoutSave={handleCommentAttemptWithoutSave} // New prop
                   />
                 </Box>
-                <Box sx={{ flex: 1 }}>
+                <Box sx={{ flex: 1, overflow: "hidden" }}>
                   <AiAssistant
                     pdfSummaryContent={pdfSummary}
                     summaryId={pdfSummaryId}
@@ -880,7 +880,7 @@ function App() {
                     username={username}
                   />
                 </Box>
-                <Box sx={{ flex: 1 }}>
+                <Box sx={{ flex: 1, overflow: "hidden" }}>
                   <Workspace />
                 </Box>
               </Box>
