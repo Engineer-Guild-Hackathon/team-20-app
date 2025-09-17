@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from .database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
 from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -190,6 +190,10 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
 
+class SessionDataRequest(BaseModel):
+    session_data: str
+
+
 
 class SaveSummaryRequest(BaseModel):
     filename: str
@@ -348,6 +352,39 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/api/session")
+async def save_user_session(
+    request: SessionDataRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザーのセッションデータを保存または更新するエンドポイント"""
+    user_session = db.query(UserSession).filter(UserSession.user_id == current_user.id).first()
+
+    if user_session:
+        user_session.session_data = request.session_data
+    else:
+        user_session = UserSession(user_id=current_user.id, session_data=request.session_data)
+        db.add(user_session)
+    
+    db.commit()
+    db.refresh(user_session)
+    return {"message": "セッションデータが正常に保存されました"}
+
+@app.get("/api/session")
+async def get_user_session(
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザーのセッションデータを取得するエンドポイント"""
+    user_session = db.query(UserSession).filter(UserSession.user_id == current_user.id).first()
+
+    if user_session:
+        return {"session_data": user_session.session_data}
+    else:
+        return {"session_data": "{}"} # データがない場合は空のJSONを返す
+
 
 @app.post("/api/teams")
 async def create_team(request: TeamCreateRequest, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):

@@ -22,6 +22,17 @@ class User(Base):
     uploaded_files = relationship("SharedFile", back_populates="uploaded_by_user")
     reactions = relationship("Reaction", back_populates="user")
     messages = relationship("Message", back_populates="user")
+    session = relationship("UserSession", back_populates="user", uselist=False)
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    session_data = Column(Text, nullable=False) # Stores JSON string of session state
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="session")
 
 class Team(Base):
     __tablename__ = "teams"

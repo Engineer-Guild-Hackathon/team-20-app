@@ -1,16 +1,27 @@
 import React, { useRef, useState } from 'react';
-import { Button, CircularProgress, Alert, Snackbar } from '@mui/material';
-import { CloudUpload } from '@mui/icons-material';
+import { Button, CircularProgress, Alert, Snackbar, IconButton, Menu, MenuItem, Box } from '@mui/material';
+import { CloudUpload, MoreVert as MoreVertIcon } from '@mui/icons-material';
 
 interface FileUploadButtonProps {
   onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => void;
+  onClearWorkspace: () => void;
 }
 
-const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated }) => {
+const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated, onClearWorkspace }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>('');
   const [showError, setShowError] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const open = Boolean(anchorEl);
+
+  const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
 
   const handleUpload = () => {
     fileInputRef.current?.click();
@@ -92,16 +103,48 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated 
         multiple
         style={{ display: 'none' }}
       />
-      
-      <Button 
-        variant="contained" 
-        color="secondary"
-        onClick={handleUpload}
-        disabled={isUploading}
-        startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUpload />}
-      >
-        {isUploading ? 'アップロード中...' : 'Upload PDF'}
-      </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Button 
+          variant="contained" 
+          color="secondary"
+          onClick={handleUpload}
+          disabled={isUploading}
+          startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUpload />}
+        >
+          {isUploading ? 'アップロード中...' : 'Upload PDF'}
+        </Button>
+        <IconButton
+          aria-label="more"
+          id="long-button"
+          aria-controls={open ? 'long-menu' : undefined}
+          aria-expanded={open ? 'true' : undefined}
+          aria-haspopup="true"
+          onClick={handleMenuClick}
+          color="inherit"
+          sx={{ ml: 1 }}
+        >
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          id="long-menu"
+          MenuListProps={{
+            'aria-labelledby': 'long-button',
+          }}
+          anchorEl={anchorEl}
+          open={open}
+          onClose={handleMenuClose}
+          PaperProps={{
+            style: {
+              maxHeight: 48 * 4.5,
+              width: '20ch',
+            },
+          }}
+        >
+          <MenuItem onClick={() => { handleMenuClose(); onClearWorkspace(); }}>
+            作業内容クリア
+          </MenuItem>
+        </Menu>
+      </Box>
 
       <Snackbar 
         open={showError} 
