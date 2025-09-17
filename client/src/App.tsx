@@ -368,15 +368,16 @@ function App() {
   };
 
   const _clearWorkspaceConfirmed = useCallback(() => {
-    setPdfSummary('');
-    setPdfFilename('');
-    setPdfSummaryId(undefined);
-    setPdfTags([]);
-    setPdfFilePath([]);
-    setChatMessages([]);
-    setViewMode('new');
-    setHistoricalContents(undefined);
     setSelectedTeamId('');
+
+    // 履歴モードの一時保存ステートも初期化
+    setPreviousPdfSummary(undefined);
+    setPreviousPdfFilename(undefined);
+    setPreviousPdfSummaryId(undefined);
+    setPreviousPdfTags(undefined);
+    setPreviousPdfFilePath(undefined);
+    setPreviousChatMessages(undefined);
+    setPreviousViewMode(undefined);
 
     try {
       sessionStorage.removeItem('currentPdfSummary');
@@ -389,7 +390,8 @@ function App() {
       console.error('Failed to clear session data:', e);
     }
     showSnackbar('作業スペースをクリアしました。', 'info');
-  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar]);
+  }, [ setSelectedTeamId, showSnackbar,
+      setPreviousPdfSummary, setPreviousPdfFilename, setPreviousPdfSummaryId, setPreviousPdfTags, setPreviousPdfFilePath, setPreviousChatMessages, setPreviousViewMode]);
 
   const handleClearWorkspace = useCallback(() => {
     setIsClearConfirmOpen(true);
@@ -795,13 +797,6 @@ function App() {
                         variant="contained"
                         color="primary"
                         onClick={() => {
-                          let teamName: string | null = null;
-                          if (selectedTeamId !== '' && selectedTeamId !== '個人用') {
-                            const selectedTeam = myTeams.find(team => team.id === Number(selectedTeamId));
-                            if (selectedTeam) {
-                              teamName = selectedTeam.name;
-                            }
-                          }
                           let teamIdToSave: number | null = null;
                           let teamNameToSave: string | null = null;
 
