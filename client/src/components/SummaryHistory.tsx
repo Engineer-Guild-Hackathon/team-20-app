@@ -744,7 +744,17 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
                 <Button onClick={handleSaveTags} variant="contained">保存</Button>
               </>
             ) : (
-              <Button onClick={handleClose}>閉じる</Button>
+              <>
+                {selectedHistory && selectedHistory.username !== currentUsername && (
+                  <Button onClick={() => {
+                    onHistoryClick(selectedHistory);
+                    handleClose(); // Close the modal after importing
+                  }} variant="contained" color="primary">
+                    メイン画面にインポート
+                  </Button>
+                )}
+                <Button onClick={handleClose}>閉じる</Button>
+              </>
             )}
           </DialogActions>
         </Dialog>

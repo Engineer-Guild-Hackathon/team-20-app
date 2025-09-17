@@ -802,7 +802,20 @@ function App() {
                               teamName = selectedTeam.name;
                             }
                           }
-                          handleSaveSummary(pdfSummary, pdfFilename, selectedTeamId === '' ? null : Number(selectedTeamId), teamName, pdfTags, username);
+                          let teamIdToSave: number | null = null;
+                          let teamNameToSave: string | null = null;
+
+                          if (selectedTeamId === '個人用') {
+                            teamIdToSave = null;
+                            teamNameToSave = null;
+                          } else if (selectedTeamId !== '') {
+                            teamIdToSave = Number(selectedTeamId);
+                            const selectedTeam = myTeams.find(team => team.id === teamIdToSave);
+                            if (selectedTeam) {
+                              teamNameToSave = selectedTeam.name;
+                            }
+                          }
+                          handleSaveSummary(pdfSummary, pdfFilename, teamIdToSave, teamNameToSave, pdfTags, username);
                         }}
                         startIcon={<SaveIcon />}
                       >

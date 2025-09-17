@@ -1052,47 +1052,41 @@ async def save_summary(
     try:
         logging.info(f"SaveSummaryRequest received. team_id: {request.team_id}")
         if request.team_id:
-            logging.info(f"Saving as personal summaries for team members of team_id: {request.team_id}")
-            # チームメンバー全員の個人要約として保存
-            team_members = db.query(TeamMember).filter(TeamMember.team_id == request.team_id).all()
-            if not team_members:
-                raise HTTPException(status_code=404, detail="指定されたチームのメンバーが見つかりません")
+            logging.info(f"Saving as team summary for team_id: {request.team_id}")
+            # チーム要約として保存 (1つのエントリ)
+            new_history = SummaryHistory(
+                user_id=current_user.id, # 保存を実行したユーザーのID
+                filename=request.filename,
+                summary=request.summary,
+                team_id=request.team_id, # リクエストで指定されたteam_idを使用
+                tags=",".join(request.tags) if request.tags else None,
+                original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(new_history)
+            db.flush() # IDを取得するためにflush
+            saved_summary_id = new_history.id
 
-            saved_summary_ids = []
-            for member in team_members:
-                new_history = SummaryHistory(
-                    user_id=member.user_id, # 各メンバーのuser_idを使用
-                    filename=request.filename,
-                    summary=request.summary,
-                    team_id=None, # チーム要約ではなく個人要約として保存
-                    tags=",".join(request.tags) if request.tags else None,
-                    original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
-                    created_at=datetime.now(timezone.utc)
-                )
-                db.add(new_history)
-                db.flush() # IDを取得するためにflush
-                saved_summary_ids.append(new_history.id)
-
-                # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
-                if request.ai_chat_history:
-                    try:
-                        chat_content_data = json.loads(request.ai_chat_history)
-                        new_chat_history_content = HistoryContent(
-                            summary_history_id=new_history.id,
-                            section_type='ai_chat',
-                            content=json.dumps(chat_content_data), # JSON文字列として保存
-                            created_at=datetime.now(timezone.utc),
-                            updated_at=datetime.now(timezone.utc)
-                        )
-                        db.add(new_chat_history_content)
-                        db.flush()
-                        new_history.chat_history_id = new_chat_history_content.id
-                    except json.JSONDecodeError as e:
-                        logging.error(f"Failed to decode ai_chat_history JSON for user {member.user_id}: {e}")
-                    except Exception as e:
-                        logging.error(f"Error saving AI chat history for user {member.user_id}: {e}")
-            db.commit() # 全ての変更をコミット
-            return {"message": "要約がチームメンバー全員の個人履歴に保存されました", "ids": saved_summary_ids}
+            # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
+            if request.ai_chat_history:
+                try:
+                    chat_content_data = json.loads(request.ai_chat_history)
+                    new_chat_history_content = HistoryContent(
+                        summary_history_id=new_history.id,
+                        section_type='ai_chat',
+                        content=json.dumps(chat_content_data), # JSON文字列として保存
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc)
+                    )
+                    db.add(new_chat_history_content)
+                    db.flush()
+                    new_history.chat_history_id = new_chat_history_content.id
+                except json.JSONDecodeError as e:
+                    logging.error(f"Failed to decode ai_chat_history JSON for team summary: {e}")
+                except Exception as e:
+                    logging.error(f"Error saving AI chat history for team summary: {e}")
+            db.commit()
+            return {"message": "要約がチーム履歴として保存されました", "id": saved_summary_id}
         else:
             logging.info("Saving as personal summary for current user.")
             # 従来の個人要約として保存
@@ -1236,28 +1230,36 @@ async def upload_shared_file(
     combined_filenames = ", ".join([f["filename"] for f in uploaded_files_info])
     combined_file_paths = json.dumps([f.filepath for f in db.query(SharedFile).filter(SharedFile.id.in_([f["file_id"] for f in uploaded_files_info])).all()])
 
-    new_history = SummaryHistory(
-        user_id=current_user.id,
-        filename=combined_filenames,
-        summary=summary_text,
-        team_id=team_id,
-        tags=",".join(generated_tags) if generated_tags else None,
-        original_file_path=combined_file_paths,
-        created_at=datetime.now(timezone.utc)
-    )
-    db.add(new_history)
-    db.commit()
-    db.refresh(new_history)
+    # チームメンバー全員の個人要約として保存
+    team_members = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
+    if not team_members:
+        raise HTTPException(status_code=404, detail="指定されたチームのメンバーが見つかりません")
+
+    saved_summary_ids = []
+    for member in team_members:
+        new_history = SummaryHistory(
+            user_id=member.user_id, # 各メンバーのuser_idを使用
+            filename=combined_filenames,
+            summary=summary_text,
+            team_id=None, # チーム要約ではなく個人要約として保存
+            tags=",".join(generated_tags) if generated_tags else None,
+            original_file_path=combined_file_paths,
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(new_history)
+        db.flush() # IDを取得するためにflush
+        saved_summary_ids.append(new_history.id)
+    db.commit() # 全ての変更をコミット
 
     return {
-        "message": "ファイルが正常にアップロードされ、要約が生成されました！",
+        "message": "ファイルが正常にアップロードされ、要約がチームメンバー全員の個人履歴に保存されました！",
         "uploaded_files": uploaded_files_info,
         "summary_details": {
             "summary": summary_text,
             "filename": combined_filenames,
             "tags": generated_tags,
             "file_path": json.loads(combined_file_paths), # Return as list
-            "summary_id": new_history.id
+            "summary_id": saved_summary_ids[0] if saved_summary_ids else None # Return the first ID, or None if no summaries saved
         }
     }
 
