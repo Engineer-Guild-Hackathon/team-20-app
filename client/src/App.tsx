@@ -409,43 +409,6 @@ function App() {
     setSnackbarOpen(false);
   };
 
-  const _clearWorkspaceConfirmed = useCallback(() => {
-    setPdfSummary('');
-    setPdfFilename('');
-    setPdfSummaryId(undefined);
-    setPdfTags([]);
-    setPdfFilePath([]);
-    setChatMessages([]);
-    setViewMode('new');
-    setHistoricalContents(undefined);
-    setSelectedTeamId('');
-
-    try {
-      sessionStorage.removeItem('currentPdfSummary');
-      sessionStorage.removeItem('currentPdfFilename');
-      sessionStorage.removeItem('currentPdfSummaryId');
-      sessionStorage.removeItem('currentPdfTags');
-      sessionStorage.removeItem('currentPdfFilePath');
-      sessionStorage.removeItem('currentChatMessages');
-    } catch (e) {
-      console.error('Failed to clear session data:', e);
-    }
-    showSnackbar('作業スペースをクリアしました。', 'info');
-  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar]);
-
-  const handleClearWorkspace = useCallback(() => {
-    setIsClearConfirmOpen(true);
-  }, []);
-
-  const handleCloseClearConfirm = useCallback(() => {
-    setIsClearConfirmOpen(false);
-  }, []);
-
-  const handleConfirmClear = useCallback(() => {
-    _clearWorkspaceConfirmed();
-    handleCloseClearConfirm();
-  }, [_clearWorkspaceConfirmed, handleCloseClearConfirm]);
-
   const handleSummaryGeneratedFromTeamUpload = async (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
     // First, set the current summary details in App state
     setPdfSummary(summary);
