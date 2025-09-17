@@ -17,3 +17,7 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Hello World"}
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
