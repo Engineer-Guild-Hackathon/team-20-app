@@ -640,6 +640,7 @@ function App() {
             tags: tags,
             original_file_path: pdfFilePath,
             ai_chat_history: chatMessages.length > 0 ? JSON.stringify(chatMessages) : undefined, // チャット履歴を追加
+            parent_summary_id: pdfSummaryId, // 追加: 親要約のID
           }),
       });
 

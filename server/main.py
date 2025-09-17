@@ -56,6 +56,11 @@ try:
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE summary_histories ADD COLUMN chat_history_id INTEGER"))
             conn.commit()
+    if 'parent_summary_id' not in columns:
+        logging.info("Adding missing column 'parent_summary_id' to summary_histories table")
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN parent_summary_id INTEGER"))
+            conn.commit()
 except Exception as e:
     logging.warning(f"Failed to ensure DB schema for summary_histories: {e}")
 
@@ -208,6 +213,7 @@ class SaveSummaryRequest(BaseModel):
     tags: Optional[List[str]] = None # 追加
     original_file_path: Optional[List[str]] = None # PDFファイルパス
     ai_chat_history: Optional[str] = None # 追加: AI Assistantのチャット履歴 (JSON文字列)
+    parent_summary_id: Optional[int] = None # 追加: 親要約のID
 
 class TagsUpdateRequest(BaseModel):
     tags: List[str]
@@ -293,6 +299,27 @@ class SummaryHistoryDetailResponse(BaseModel):
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
+class SummaryNodeAttributes(BaseModel):
+    id: int
+    summary: str
+    created_at: Optional[str]
+    user_id: int
+    username: str
+    team_id: Optional[int] = None
+    team_name: Optional[str] = None
+    tags: str # string[]からstringに変更
+    chat_history_id: Optional[int] = None
+    original_file_path: Optional[str] = None # string[]からstringに変更
+    parent_summary_id: Optional[int] = None
+
+class SummaryTreeNode(BaseModel):
+    name: str
+    attributes: SummaryNodeAttributes
+    children: List["SummaryTreeNode"] = []
+
+    class Config:
+        from_attributes = True
+
 
 class SharedFileResponse(BaseModel):
     id: int
@@ -307,6 +334,8 @@ class SharedFileResponse(BaseModel):
         json_encoders = {
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
+
+
 
 class MessageCreateRequest(BaseModel):
     content: str
@@ -859,6 +888,81 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
         logging.error(f"Error fetching summaries for user {current_user.username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"要約の取得中にエラーが発生しました: {str(e)}")
 
+@app.get("/api/summaries/tree", response_model=List[SummaryTreeNode])
+async def get_summaries_tree(current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
+    """認証されたユーザーの要約履歴と、所属チームの共有要約をツリー構造で取得する"""
+    try:
+        # ユーザー自身の要約と、所属チームに共有された要約をすべて取得
+        # 効率のために、一度にすべての関連データをフェッチ
+        all_summaries_query = db.query(SummaryHistory, User.username, Team.name).outerjoin(Team, SummaryHistory.team_id == Team.id).join(User, SummaryHistory.user_id == User.id).filter(
+            (SummaryHistory.user_id == current_user.id) |
+            (SummaryHistory.team_id.in_([tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]))
+        ).order_by(SummaryHistory.created_at.asc())
+
+        all_summaries_raw = all_summaries_query.all()
+        logging.info(f"Fetched {len(all_summaries_raw)} raw summaries for tree view.")
+        for s in all_summaries_raw:
+            logging.info(f"Raw summary: ID={s.SummaryHistory.id}, Filename={s.SummaryHistory.filename}, ParentID={s.SummaryHistory.parent_summary_id}")
+
+        # SummaryHistoryオブジェクトをIDでマップ
+        summaries_map = {s.SummaryHistory.id: s.SummaryHistory for s in all_summaries_raw}
+        
+        # ツリー構造を構築
+        # ルートノード（parent_summary_idがNone）と子ノードを区別
+        nodes = {}
+        for summary_tuple in all_summaries_raw:
+            summary_obj = summary_tuple.SummaryHistory
+            username = summary_tuple.username
+            team_name = summary_tuple.name
+
+            node_data = {
+                "name": summary_obj.filename,
+                "attributes": SummaryNodeAttributes(
+                    id=summary_obj.id,
+                    summary=summary_obj.summary,
+                    created_at=summary_obj.created_at.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z') if summary_obj.created_at else None,
+                    user_id=summary_obj.user_id,
+                    username=username,
+                    team_id=summary_obj.team_id,
+                    team_name=team_name,
+                    tags=",".join(summary_obj.tags.split(',')) if summary_obj.tags else "", # string[]からstringに変換
+                    chat_history_id=summary_obj.chat_history_id,
+                    original_file_path=(
+                        summary_obj.original_file_path
+                        if summary_obj.original_file_path else None
+                    ), # JSON文字列のまま渡す
+                    parent_summary_id=summary_obj.parent_summary_id
+                ),
+                "children": []
+            }
+            try:
+                nodes[summary_obj.id] = SummaryTreeNode(**node_data)
+            except Exception as e:
+                logging.error(f"Error creating SummaryTreeNode for summary ID {summary_obj.id} (Filename: {summary_obj.filename}): {e}")
+                logging.info(f"Problematic node_data: {node_data}")
+
+        logging.info(f"Nodes dictionary after creation: {list(nodes.keys())}") # 追加
+
+        # 親子関係を構築
+        root_nodes = []
+        for summary_id, node in nodes.items():
+            parent_id = node.attributes.parent_summary_id
+            if parent_id and parent_id in nodes:
+                nodes[parent_id].children.append(node)
+                logging.info(f"Node ID {summary_id} (Filename: {node.name}) added as child of {parent_id}.") # 追加
+            else:
+                root_nodes.append(node)
+                logging.info(f"Node ID {summary_id} (Filename: {node.name}) added as root node. ParentID: {parent_id}") # 追加
+        
+        # ルートノードをcreated_atでソート
+        root_nodes.sort(key=lambda x: x.attributes.created_at, reverse=True)
+
+        return root_nodes
+
+    except Exception as e:
+        logging.error(f"Error fetching summaries tree for user {current_user.username}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"要約ツリーの取得中にエラーが発生しました: {str(e)}")
+
 @app.post("/api/comments")
 async def add_comment(request: CommentCreateRequest, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
     """要約にコメントを追加するエンドポイント"""
@@ -1054,7 +1158,7 @@ async def save_summary(
 ):
     """要約をデータベースに保存するエンドポイント"""
     try:
-        logging.info(f"SaveSummaryRequest received. team_id: {request.team_id}")
+        logging.info(f"SaveSummaryRequest received. team_id: {request.team_id}, parent_summary_id: {request.parent_summary_id}")
         if request.team_id:
             logging.info(f"Saving as team summary for team_id: {request.team_id}")
             # チーム要約として保存 (1つのエントリ)
@@ -1065,10 +1169,12 @@ async def save_summary(
                 team_id=request.team_id, # リクエストで指定されたteam_idを使用
                 tags=",".join(request.tags) if request.tags else None,
                 original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                parent_summary_id=request.parent_summary_id, # 追加
                 created_at=datetime.now(timezone.utc)
             )
             db.add(new_history)
             db.flush() # IDを取得するためにflush
+            logging.info(f"Team summary new_history.parent_summary_id: {new_history.parent_summary_id}")
             saved_summary_id = new_history.id
 
             # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
@@ -1101,10 +1207,12 @@ async def save_summary(
                 team_id=None, # 個人要約なのでteam_idはNone
                 tags=",".join(request.tags) if request.tags else None,
                 original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
+                parent_summary_id=request.parent_summary_id, # 追加
                 created_at=datetime.now(timezone.utc)
             )
             db.add(new_history)
             db.flush()
+            logging.info(f"Personal summary new_history.parent_summary_id: {new_history.parent_summary_id}")
             saved_summary_id = new_history.id
 
             # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する

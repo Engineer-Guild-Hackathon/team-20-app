@@ -27,6 +27,8 @@ import {
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
 import AddReactionIcon from '@mui/icons-material/AddReaction'; // 追加
+import AccountTreeIcon from '@mui/icons-material/AccountTree'; // 追加
+import SummaryTreeGraph from './SummaryTreeGraph'; // 追加
 import { Message, HistoryContent } from './AiAssistant'; // AiAssistantと関連する型をインポート
 
 // App.tsxから渡されるHistoryItemの型を再利用
@@ -170,6 +172,7 @@ const ChatHistoryDisplay: React.FC<{ chatHistoryId?: number }> = ({ chatHistoryI
 
 const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryClick, onUpdateHistory, currentUsername }) => {
   const [filter, setFilter] = useState('all');
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'tree'
   const [open, setOpen] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState<HistoryItem | null>(null);
   const [isEditingTags, setIsEditingTags] = useState(false);
@@ -487,81 +490,108 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
             チーム
           </ToggleButton>
         </ToggleButtonGroup>
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={(event, newViewMode) => {
+            if (newViewMode !== null) {
+              setViewMode(newViewMode);
+            }
+          }}
+          aria-label="view mode"
+          size="small"
+          sx={{
+            ml: 2,
+            border: '1px solid #00bcd4',
+            boxShadow: '0 0 5px rgba(0, 188, 212, 0.5)',
+          }}
+        >
+          <ToggleButton value="list" aria-label="list view">
+            <HistoryIcon fontSize="small" />
+          </ToggleButton>
+          <ToggleButton value="tree" aria-label="tree view">
+            <AccountTreeIcon fontSize="small" />
+          </ToggleButton>
+        </ToggleButtonGroup>
       </Box>
       <Divider sx={{ mb: 1, borderColor: '#00bcd4' }} />
       <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-        {displayedHistories.length === 0 ? (
-          <Typography sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
-            履歴はありません
-          </Typography>
-        ) : (
-          <List disablePadding>
-            {displayedHistories.map((item, index) => (
-              <ListItem key={item.id || index} disablePadding>
-                <ListItemButton
-                  onClick={() => handleHistoryItemClick(item)}
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: 'rgba(0, 188, 212, 0.1)', // ホバー時の背景色
-                    },
-                  }}
-                >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography
-                          component="span"
-                          variant="body2"
-                          fontWeight={500}
-                          noWrap
-                          sx={{ flexGrow: 1 }}
-                        >
-                          {item.filename}
-                        </Typography>
-                        {item.team_id && (
-                          <Chip
-                            label={`チーム共有: ${item.team_name || '不明'} (${item.username || '不明'})`}
-                            size="small"
-                            // color="info" // 削除
-                            sx={{ ml: 1, border: '1px solid #00bcd4' }} // ボーダーを追加
-                          />
-                        )}
-                      </Box>
-                    }
-                    secondary={
-                      <>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flexGrow: 1 }}>
-                            {item.tags?.map((tag, index) => (
-                              <Chip key={index} label={tag} size="small" sx={{ border: '1px solid #00bcd4' }} /> // ボーダーを追加
-                            ))}
-                          </Box>
+        {viewMode === 'list' ? (
+          displayedHistories.length === 0 ? (
+            <Typography sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
+              履歴はありません
+            </Typography>
+          ) : (
+            <List disablePadding>
+              {displayedHistories.map((item, index) => (
+                <ListItem key={item.id || index} disablePadding>
+                  <ListItemButton
+                    onClick={() => handleHistoryItemClick(item)}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 188, 212, 0.1)', // ホバー時の背景色
+                      },
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <Typography
                             component="span"
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ flexShrink: 0, ml: 1 }}
+                            variant="body2"
+                            fontWeight={500}
+                            noWrap
+                            sx={{ flexGrow: 1 }}
                           >
-                            {item.created_at && !isNaN(new Date(item.created_at).getTime())
-                              ? new Intl.DateTimeFormat('ja-JP', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                }).format(new Date(item.created_at))
-                              : '日付不明'}
+                            {item.filename}
                           </Typography>
+                          {item.team_id && (
+                            <Chip
+                              label={`チーム共有: ${item.team_name || '不明'} (${item.username || '不明'})`}
+                              size="small"
+                              // color="info" // 削除
+                              sx={{ ml: 1, border: '1px solid #00bcd4' }} // ボーダーを追加
+                            />
+                          )}
                         </Box>
-                      </>
-                    }
-                    secondaryTypographyProps={{ component: 'span' }}
-                  />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
+                      }
+                      secondary={
+                        <>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, flexGrow: 1 }}>
+                              {item.tags?.map((tag, index) => (
+                                <Chip key={index} label={tag} size="small" sx={{ border: '1px solid #00bcd4' }} /> // ボーダーを追加
+                              ))}
+                            </Box>
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ flexShrink: 0, ml: 1 }}
+                            >
+                              {item.created_at && !isNaN(new Date(item.created_at).getTime())
+                                ? new Intl.DateTimeFormat('ja-JP', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                  }).format(new Date(item.created_at))
+                                : '日付不明'}
+                            </Typography>
+                          </Box>
+                        </>
+                      }
+                      secondaryTypographyProps={{ component: 'span' }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          )
+        ) : (
+          <SummaryTreeGraph onNodeClick={handleHistoryItemClick} />
         )}
       </Box>
       {selectedHistory && (
