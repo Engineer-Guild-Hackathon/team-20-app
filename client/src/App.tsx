@@ -430,17 +430,9 @@ function App() {
     setViewMode('new'); // Set view mode to new
     setHistoricalContents(undefined); // Clear historical contents
 
-    // Now, automatically save this summary as a personal summary for all team members
-    // The teamId parameter to handleSaveSummary should be null to trigger personal save logic
-    const savedId = await handleSaveSummary(summary, filename, null, null, tags, username); // Pass null for teamId and teamName
-
-    if (savedId) {
-      // If successfully saved as personal, update the current summaryId to the new personal one
-      setPdfSummaryId(savedId);
-      showSnackbar('要約がチームメンバー全員の個人履歴に自動保存されました！', 'success');
-    } else {
-      showSnackbar('要約の自動保存に失敗しました。', 'error');
-    }
+    // The summary is already saved by the server-side /api/teams/{team_id}/files endpoint
+    // We just need to update the UI state with the summaryId returned from the server.
+    setPdfSummaryId(summaryId);
     navigate('/'); // Navigate to main page
   };
 

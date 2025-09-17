@@ -1239,6 +1239,7 @@ async def upload_shared_file(
         raise HTTPException(status_code=404, detail="指定されたチームのメンバーが見つかりません")
 
     saved_summary_ids = []
+    dt = datetime.now(timezone.utc)
     for member in team_members:
         new_history = SummaryHistory(
             user_id=member.user_id, # 各メンバーのuser_idを使用
@@ -1247,7 +1248,7 @@ async def upload_shared_file(
             team_id=None, # チーム要約ではなく個人要約として保存
             tags=",".join(generated_tags) if generated_tags else None,
             original_file_path=combined_file_paths,
-            created_at=datetime.now(timezone.utc)
+            created_at=dt
         )
         db.add(new_history)
         db.flush() # IDを取得するためにflush

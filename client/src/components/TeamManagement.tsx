@@ -320,8 +320,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ showSnackbar, onSummary
 
       if (response.ok) {
         const data = await response.json();
-        const uploadedFileNames = data.uploaded_files.map((f: any) => f.filename).join(', ');
-        showSnackbar(`${uploadedFileNames} が正常にアップロードされ、要約が生成されました！`, 'success');
+        showSnackbar( data.message, 'success');
         fetchSharedFiles(selectedTeam.id); // ファイルリストを更新
 
         // Pass summary details to parent component
