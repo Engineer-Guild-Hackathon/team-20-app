@@ -20,6 +20,7 @@ import 'prismjs/components/prism-python';
 export interface Message {
   sender: 'user' | 'ai';
   text: string;
+  username?: string; // Add username property
 }
 
 export interface HistoryContent {
@@ -39,9 +40,10 @@ interface AiAssistantProps {
   currentMessages: Message[];
   onMessagesChange: (messages: Message[]) => void;
   currentPdfFilePaths?: string[];
+  username: string | null; // Add username prop
 }
 
-const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange, currentPdfFilePaths }: AiAssistantProps) => {
+const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange, currentPdfFilePaths, username }: AiAssistantProps) => {
   const [input, setInput] = useState('');
   const [displayMessages, setDisplayMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,7 +55,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
     if (!message.trim()) return;
 
     // チャット画面に表示するメッセージ
-    const userDisplayMessage: Message = { sender: 'user', text: displayMessage || message };
+    const userDisplayMessage: Message = { sender: 'user', text: displayMessage || message, username: username || undefined };
     const newMessages = [...currentMessages, userDisplayMessage];
     onMessagesChange(newMessages); // 親コンポーネントに通知
     setInput('');
@@ -147,7 +149,12 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
       <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }} ref={messagesEndRef}>
         <List>
           {displayMessages.map((msg, index) => (
-            <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
+            <ListItem key={index} sx={{ display: 'flex', flexDirection: 'column', alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start', px: 0 }}>
+              {msg.sender === 'user' && msg.username && (
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, mr: 1 }}>
+                  {msg.username}
+                </Typography>
+              )}
               <Paper
                 elevation={2}
                 sx={{

@@ -116,7 +116,12 @@ const ChatHistoryDisplay: React.FC<{ chatHistoryId?: number }> = ({ chatHistoryI
   return (
     <List>
       {chatMessages.map((msg: Message, index: number) => (
-        <ListItem key={index} sx={{ display: 'flex', justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start', px: 0 }}>
+        <ListItem key={index} sx={{ display: 'flex', flexDirection: 'column', alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start', px: 0 }}>
+          {msg.sender === 'user' && msg.username && (
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, mr: 1 }}>
+              {msg.username}
+            </Typography>
+          )}
           <Paper
             elevation={2}
             sx={{

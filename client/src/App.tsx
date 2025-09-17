@@ -877,6 +877,7 @@ function App() {
                     historicalContents={historicalContents}
                     currentMessages={chatMessages}
                     onMessagesChange={handleMessagesChange}
+                    username={username}
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>
