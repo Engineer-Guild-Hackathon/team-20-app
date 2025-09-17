@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from .database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
 from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -20,6 +20,7 @@ from typing import Optional, List
 import uuid
 from fastapi.responses import FileResponse
 import re # 追加
+from starlette.concurrency import run_in_threadpool
 
 # ファイル保存ディレクトリの設定
 UPLOAD_DIRECTORY = "./shared_files"
@@ -28,6 +29,10 @@ UPLOAD_DIRECTORY = "./shared_files"
 if not os.path.exists(UPLOAD_DIRECTORY):
     os.makedirs(UPLOAD_DIRECTORY)
     logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
+
+def write_file_sync(path, content):
+    with open(path, "wb") as f:
+        f.write(content)
 
 # ログ設定
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -591,7 +596,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                             logging.info(f"File exists: {file_path}")
                             with open(file_path, 'rb') as f:
                                 file_content = f.read()
-                            base64_content = base64.b64encode(file_content).decode('utf-8')
+                            base64_content = await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8'))
                             pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
                             logging.info(f"Using PDF file directly: {file_path}")
                         else:
@@ -603,7 +608,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                         ]
                         contents_parts.extend(pdf_parts) # PDFデータを追加
 
-                        response = client.models.generate_content(
+                        response = await client.aio.models.generate_content(
                             model='gemini-2.0-flash-001',
                             contents=[
                                 {'parts': contents_parts}
@@ -629,7 +634,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                         logging.info(f"File exists: {file_path}")
                         with open(file_path, 'rb') as f:
                             file_content = f.read()
-                        base64_content = base64.b64encode(file_content).decode('utf-8')
+                        base64_content = await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8'))
                         pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
                         logging.info(f"Using PDF file from request.original_file_paths: {file_path}")
                     else:
@@ -641,7 +646,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                     ]
                     contents_parts.extend(pdf_parts) # PDFデータを追加
 
-                    response = client.models.generate_content(
+                    response = await client.aio.models.generate_content(
                         model='gemini-2.0-flash-001',
                         contents=[
                             {'parts': contents_parts}
@@ -662,7 +667,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         if request.pdf_summary:
             full_content = f"以下のPDF要約を考慮して質問に答えてください。\n\nPDF要約:\n{request.pdf_summary}\n\n質問:\n{request.message}"
 
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model='gemini-2.0-flash-001', contents=full_content
         )
         
@@ -699,7 +704,7 @@ async def upload_pdf(
                 raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイルサイズが大きすぎます (10MB以下にしてください)")
             
             file_content = await file.read()
-            base64_content = base64.b64encode(file_content).decode('utf-8')
+            base64_content = await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8'))
             all_base64_contents.append(base64_content)
             all_filenames.append(file.filename)
 
@@ -707,8 +712,7 @@ async def upload_pdf(
             unique_filename = f"{uuid.uuid4()}_{file.filename}"
             file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
             
-            with open(file_path, "wb") as f:
-                f.write(file_content)
+            await run_in_threadpool(write_file_sync, file_path, file_content)
             
             logging.info(f"PDF file saved to: {file_path}")
             all_file_paths.append(file_path)
@@ -722,7 +726,7 @@ async def upload_pdf(
         for base64_content in all_base64_contents:
             parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
 
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model='gemini-2.0-flash-001',
             contents=[
                 {'parts': parts}
@@ -1167,8 +1171,7 @@ async def upload_shared_file(
         file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
 
         try:
-            with open(file_path, "wb") as buffer:
-                buffer.write(file_content)
+            await run_in_threadpool(write_file_sync, file_path, file_content)
         except Exception as e:
             logging.error(f"Error saving file '{file.filename}' to disk: {e}")
             raise HTTPException(status_code=500, detail=f"ファイルの保存中にエラーが発生しました: {file.filename}")
@@ -1191,7 +1194,7 @@ async def upload_shared_file(
         file_path = db.query(SharedFile).filter(SharedFile.id == file_info["file_id"]).first().filepath
         with open(file_path, 'rb') as f:
             file_content = f.read()
-        all_base64_contents.append(base64.b64encode(file_content).decode('utf-8'))
+        all_base64_contents.append(await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8')))
 
     client = genai.Client(api_key=API_KEY)
     
@@ -1201,7 +1204,7 @@ async def upload_shared_file(
     for base64_content in all_base64_contents:
         parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
 
-    response = client.models.generate_content(
+    response = await client.aio.models.generate_content(
         model='gemini-2.0-flash-001',
         contents=[
             {'parts': parts}
@@ -1596,4 +1599,9 @@ async def get_history_content_by_id(
     )
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # CPUコア数の半分に基づいてワーカー数を設定（最低1ワーカー）
+    num_workers = max(1, (os.cpu_count() or 1) // 2)
+    logging.info(f"Starting Uvicorn with {num_workers} workers (half of CPU cores).")
+    config = uvicorn.Config("main:app", host="0.0.0.0", port=8000, reload=True, workers=num_workers)
+    server = uvicorn.Server(config)
+    server.run()

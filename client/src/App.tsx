@@ -368,6 +368,14 @@ function App() {
   };
 
   const _clearWorkspaceConfirmed = useCallback(() => {
+    setPdfSummary('');
+    setPdfFilename('');
+    setPdfSummaryId(undefined);
+    setPdfTags([]);
+    setPdfFilePath([]);
+    setChatMessages([]);
+    setViewMode('new');
+    setHistoricalContents(undefined);
     setSelectedTeamId('');
 
     // 履歴モードの一時保存ステートも初期化
@@ -389,8 +397,8 @@ function App() {
     } catch (e) {
       console.error('Failed to clear session data:', e);
     }
-    showSnackbar('作業スペースをクリアしました。', 'info');
-  }, [ setSelectedTeamId, showSnackbar,
+    showSnackbar('作業内容をクリアしました。', 'info');
+  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar,
       setPreviousPdfSummary, setPreviousPdfFilename, setPreviousPdfSummaryId, setPreviousPdfTags, setPreviousPdfFilePath, setPreviousChatMessages, setPreviousViewMode]);
 
   const handleClearWorkspace = useCallback(() => {
