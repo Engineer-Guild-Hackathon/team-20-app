@@ -183,6 +183,13 @@ def get_required_user(authorization: str = Header(...), db: Session = Depends(ge
 
 
 
+class Message(BaseModel):
+    sender: str
+    text: str
+    username: Optional[str] = None
+    timestamp: str
+    category: Optional[str] = None # NEW FIELD: Add category to Message
+
 class ChatRequest(BaseModel):
     message: str
     pdf_summary: Optional[str] = None
@@ -338,6 +345,7 @@ class GraphNode(BaseModel):
     parent_summary_id: Optional[int] = None # NEW FIELD
     question_created_at: Optional[datetime] = None # NEW FIELD
     summary_created_at: Optional[datetime] = None # NEW FIELD
+    category: Optional[str] = None # NEW FIELD: Add category to GraphNode
 
 
 class GraphLink(BaseModel):
@@ -722,6 +730,30 @@ async def summarize_text_with_gemini(text: str) -> str:
     except Exception as e:
         logging.error(f"Error summarizing text with Gemini API: {str(e)}")
         return "要約の生成中にエラーが発生しました"
+
+async def generate_category_with_gemini(question_text: str) -> str:
+    """Gemini APIを使用して質問テキストからカテゴリを生成する"""
+    client = genai.Client(api_key=API_KEY)
+    try:
+        prompt = (
+            f"以下の質問テキストに最も適したカテゴリを一つだけ選んでください。\n"
+            f"選択肢: 技術, ビジネス, 研究, その他\n"
+            f"もし上記の選択肢に当てはまらない場合は、質問内容から新しいカテゴリ名を簡潔に生成してください。\n"
+            f"回答はカテゴリ名のみを返してください。\n\n質問テキスト:\n{question_text}"
+        )
+        response = await client.aio.models.generate_content(
+            model='gemini-2.0-flash-001',
+            contents=prompt
+        )
+        if hasattr(response, 'text') and response.text:
+            return response.text.strip()
+        elif hasattr(response, 'candidates') and response.candidates:
+            return response.candidates[0].content.parts[0].text.strip()
+        else:
+            return "その他"
+    except Exception as e:
+        logging.error(f"Error generating category with Gemini API: {str(e)}")
+        return "その他"
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(
@@ -1125,6 +1157,12 @@ async def save_summary(
                         if "timestamp" not in message:
                             message["timestamp"] = datetime.now(timezone.utc).isoformat()
                     
+                    # ユーザーメッセージにカテゴリを追加 (AI生成)
+                    for message in chat_content_data:
+                        if message.get("sender") == "user" and "category" not in message:
+                            generated_category = await generate_category_with_gemini(message.get("text", ""))
+                            message["category"] = generated_category
+
                     new_chat_history_content = HistoryContent(
                         summary_history_id=new_history.id,
                         section_type='ai_chat',
@@ -1183,6 +1221,12 @@ async def save_summary(
                         if "timestamp" not in message:
                             message["timestamp"] = datetime.now(timezone.utc).isoformat()
                     
+                    # ユーザーメッセージにカテゴリを追加 (AI生成)
+                    for message in chat_content_data:
+                        if message.get("sender") == "user" and "category" not in message:
+                            generated_category = await generate_category_with_gemini(message.get("text", ""))
+                            message["category"] = generated_category
+
                     new_chat_history_content = HistoryContent(
                         summary_history_id=new_history.id,
                         section_type='ai_chat',
@@ -1579,7 +1623,7 @@ async def get_summary_tree_graph(
             type="summary",
             summary_id=summary.id,
             parent_summary_id=summary.parent_summary_id,
-            summary_created_at=created_at_utc# NEW FIELD: summary_created_at を追加
+            summary_created_at=created_at_utc # NEW FIELD: summary_created_at を追加
         ))
         logging.info(nodes)
 
@@ -1593,6 +1637,9 @@ async def get_summary_tree_graph(
             HistoryContent.summary_history_id == summary.id,
             HistoryContent.section_type == 'ai_chat'
         ).order_by(HistoryContent.created_at).all()
+
+        # カテゴリごとの質問をグループ化するための辞書
+        questions_by_category: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
         for chat_content in ai_chat_contents:
             try:
@@ -1609,11 +1656,9 @@ async def get_summary_tree_graph(
                 ).first()
                 summarized_ai_answer = ai_summary_response.summarized_content if ai_summary_response else None
 
-                previous_node_id = summary_node_id
-                
                 # チャット履歴を解析し、質問と回答のペアを抽出
-                questions_with_answers: List[Dict[str, Any]] = [] # Store question, answer, and timestamp
-                current_question_data: Optional[Dict[str, Any]] = None # To hold {'question': str, 'timestamp': datetime}
+                questions_with_answers: List[Dict[str, Any]] = [] # Store question, answer, category, and timestamp
+                current_question_data: Optional[Dict[str, Any]] = None # To hold {'question': str, 'timestamp': datetime, 'category': str}
 
                 for i, message in enumerate(chat_history_data):
                     message_role = message.get('sender', 'unknown')
@@ -1632,14 +1677,16 @@ async def get_summary_tree_graph(
                             questions_with_answers.append({
                                 "question": current_question_data["question"],
                                 "answer": "", # No AI answer yet
-                                "timestamp": current_question_data["timestamp"]
+                                "timestamp": current_question_data["timestamp"],
+                                "category": current_question_data.get("category")
                             })
-                        current_question_data = {"question": message_text, "timestamp": message_timestamp}
+                        current_question_data = {"question": message_text, "timestamp": message_timestamp, "category": message.get("category")}
                     elif message_role == "ai" and current_question_data is not None:
                         questions_with_answers.append({
                             "question": current_question_data["question"],
                             "answer": message_text,
-                            "timestamp": current_question_data["timestamp"]
+                            "timestamp": current_question_data["timestamp"],
+                            "category": current_question_data.get("category")
                         })
                         current_question_data = None # Reset for the next question
 
@@ -1648,30 +1695,48 @@ async def get_summary_tree_graph(
                     questions_with_answers.append({
                         "question": current_question_data["question"],
                         "answer": "", # No AI answer yet
-                        "timestamp": current_question_data["timestamp"]
+                        "timestamp": current_question_data["timestamp"],
+                        "category": current_question_data.get("category")
                     })
-
-                # 質問ノードとエッジを構築
-                for i, qa_pair in enumerate(questions_with_answers):
-                    question_node_id = f"question_{chat_content.id}_{i}"
-                    
-                    nodes.append(GraphNode(
-                        id=question_node_id,
-                        label=qa_pair["question"],
-                        type="user_question",
-                        summary_id=summary.id,
-                        question_id=question_node_id,
-                        ai_answer=qa_pair["answer"],
-                        ai_answer_summary=summarized_ai_answer, # NEW: 要約されたAI回答を追加
-                        question_created_at=qa_pair["timestamp"], # NEW FIELD: question_created_at を追加
-                    ))
-                    
-                    links.append(GraphLink(source=summary_node_id, target=question_node_id)) # 常に要約ノードからリンク
+                
+                # カテゴリごとに質問をグループ化
+                for qa_pair in questions_with_answers:
+                    category = qa_pair.get("category", "未分類")
+                    questions_by_category[category].append(qa_pair)
 
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to decode chat history JSON for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id}: {e}")
             except Exception as e:
                 logging.error(f"Error processing chat history for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id}: {e}")
+
+        # カテゴリノードと質問ノード、およびリンクを構築
+        for category_name, qa_pairs in questions_by_category.items():
+            category_node_id = f"category_{summary.id}_{category_name}"
+            nodes.append(GraphNode(
+                id=category_node_id,
+                label=category_name,
+                type="category",
+                summary_id=summary.id, # どの要約に属するカテゴリか
+                category=category_name,
+            ))
+            links.append(GraphLink(source=summary_node_id, target=category_node_id))
+
+            for i, qa_pair in enumerate(qa_pairs):
+                question_node_id = f"question_{summary.id}_{category_name}_{i}"
+                
+                nodes.append(GraphNode(
+                    id=question_node_id,
+                    label=qa_pair["question"],
+                    type="user_question",
+                    summary_id=summary.id,
+                    question_id=question_node_id,
+                    ai_answer=qa_pair["answer"],
+                    ai_answer_summary=summarized_ai_answer, # NEW: 要約されたAI回答を追加
+                    question_created_at=qa_pair["timestamp"], # NEW FIELD: question_created_at を追加
+                    category=qa_pair.get("category") # NEW FIELD: category を追加
+                ))
+                
+                links.append(GraphLink(source=category_node_id, target=question_node_id)) # カテゴリノードから質問ノードへリンク
 
     return GraphData(nodes=nodes, links=links)
 

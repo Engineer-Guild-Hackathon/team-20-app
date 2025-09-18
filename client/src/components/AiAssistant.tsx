@@ -22,6 +22,7 @@ export interface Message {
   text: string;
   username?: string; // Add username property
   timestamp: string; // NEW FIELD: Add timestamp
+  category?: string; // NEW FIELD: Add category
 }
 
 export interface HistoryContent {

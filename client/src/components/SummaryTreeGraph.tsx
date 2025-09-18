@@ -11,7 +11,7 @@ cytoscape.use(dagre);
 interface GraphNode {
   id: string;
   label: string;
-  type: 'summary' | 'user_question'; // ai_messageはノードとして表示しない
+  type: 'summary' | 'user_question' | 'category'; // ai_messageはノードとして表示しない
   summary_id?: number;
   question_id?: string; // 質問ノード用
   ai_answer?: string; // 質問ノード用
@@ -19,6 +19,7 @@ interface GraphNode {
   parent_summary_id?: number; // NEW FIELD
   question_created_at?: string; // NEW FIELD
   summary_created_at?: string; // NEW FIELD
+  category?: string; // NEW FIELD: Add category to GraphNode
 }
 
 interface GraphLink {
@@ -71,7 +72,7 @@ const SummaryTreeGraph: React.FC = () => {
   useEffect(() => {
     if (!graphData) return;
 
-    console.log("--- Debugging SummaryTreeGraph ---");
+    console.log("--- Debugging SummaryTreeGraph --- ");
     console.log("Initial graphData:", graphData);
 
     const elementsWithDepth: any[] = [];
@@ -95,7 +96,7 @@ const SummaryTreeGraph: React.FC = () => {
       adj[link.source].push(link.target);
     });
 
-    // Perform BFS to calculate depth for question nodes
+    // Perform BFS to calculate depth for category and question nodes
     const queue: string[] = graphData.nodes.filter(n => n.type === 'summary').map(n => n.id);
     let head = 0;
 
@@ -113,26 +114,37 @@ const SummaryTreeGraph: React.FC = () => {
       }
     }
 
-    // Add question nodes with calculated depth
+    // Add category and question nodes with calculated depth
     graphData.nodes.forEach(node => {
-      if (node.type === 'user_question') {
-        const depth = depthMap.get(node.id) || 1; // Default to 1 if not found (should be found if linked to a summary)
+      if (node.type === 'category') {
+        const depth = depthMap.get(node.id) || 1; // Default to 1 if not found
         elementsWithDepth.push({
           data: { ...node, depth: depth },
           classes: node.type,
         });
+      } else if (node.type === 'user_question') {
+        const depth = depthMap.get(node.id) || 2; // Default to 2 if not found
+        elementsWithDepth.push({
+          data: { ...node, depth: depth },
+          classes: `${node.type} ${node.category ? `category-${node.category}` : ''}`, // カテゴリクラスを追加
+        });
       }
     });
 
-    // Add links (summary-question)
+    // Add links
     graphData.links.forEach(link => {
       const sourceNode = graphData.nodes.find(n => n.id === link.source);
       const targetNode = graphData.nodes.find(n => n.id === link.target);
 
-      if (sourceNode?.type === 'summary' && targetNode?.type === 'user_question') {
+      if (sourceNode?.type === 'summary' && targetNode?.type === 'category') {
         elementsWithDepth.push({
-          data: { source: link.source, target: link.target, type: 'summary_question_link' },
-          classes: 'summary_question_link',
+          data: { source: link.source, target: link.target, type: 'summary_category_link' },
+          classes: 'summary_category_link',
+        });
+      } else if (sourceNode?.type === 'category' && targetNode?.type === 'user_question') {
+        elementsWithDepth.push({
+          data: { source: link.source, target: link.target, type: 'category_question_link' },
+          classes: 'category_question_link',
         });
       } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
         elementsWithDepth.push({
@@ -242,6 +254,47 @@ const SummaryTreeGraph: React.FC = () => {
         'width': 3,
       },
     },
+        {
+          selector: '.category',
+          style: {
+            'background-color': '#FFC107', // カテゴリノードの色
+            'shape': 'round-rectangle', // カテゴリノードの形状
+            'font-size': '12px',
+            'text-max-width': '100px',
+            'width': 'label',
+            'height': 'label',
+            'padding': '8px',
+            'border-color': '#FFA000',
+            'shadow-color': '#FFC107',
+          },
+        },
+        {
+          selector: '.category-技術',
+          style: {
+            'background-color': '#FF5733', // 技術カテゴリの色
+            'border-color': '#C70039',
+          },
+        },    {
+      selector: '.category-ビジネス',
+      style: {
+        'background-color': '#33FF57', // ビジネスカテゴリの色
+        'border-color': '#00C739',
+      },
+    },
+    {
+      selector: '.category-研究',
+      style: {
+        'background-color': '#3357FF', // 研究カテゴリの色
+        'border-color': '#0039C7',
+      },
+    },
+    {
+      selector: '.category-その他',
+      style: {
+        'background-color': '#888888', // その他カテゴリの色
+        'border-color': '#555555',
+      },
+    },
     {
       selector: 'node:selected',
       style: {
@@ -318,14 +371,24 @@ const SummaryTreeGraph: React.FC = () => {
           <Typography variant="h6" gutterBottom>ノード詳細</Typography>
           <Typography variant="subtitle1">ID: {selectedNode.id}</Typography>
           <Typography variant="subtitle1">タイプ: {selectedNode.type}</Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            <strong>内容:</strong> {selectedNode.label}
-          </Typography>
+          {selectedNode.type === 'category' && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>カテゴリ名:</strong> {selectedNode.label}
+            </Typography>
+          )}
+          {selectedNode.type !== 'category' && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>内容:</strong> {selectedNode.label}
+            </Typography>
+          )}
           {selectedNode.summary_id && (
             <Typography variant="body2">要約ID: {selectedNode.summary_id}</Typography>
           )}
           {selectedNode.question_id && (
             <Typography variant="body2">質問ID: {selectedNode.question_id}</Typography>
+          )}
+          {selectedNode.category && (
+            <Typography variant="body2">カテゴリ: {selectedNode.category}</Typography>
           )}
           {selectedNode.ai_answer && (
             <Box sx={{ mt: 2 }}>
