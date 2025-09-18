@@ -351,6 +351,8 @@ class GraphNode(BaseModel):
     category: Optional[str] = None # NEW FIELD: Add category to GraphNode
     history_content_id: Optional[int] = None # NEW FIELD: Reference to HistoryContent.id
     original_summary_id: Optional[int] = None # NEW FIELD: 質問が紐づく元の要約ID
+    grouped_question_ids: Optional[List[str]] = None # NEW FIELD: 統合された質問ノードのIDリスト
+    original_questions_details: Optional[List[Dict[str, Any]]] = None # NEW FIELD: 統合された質問の詳細
 
 
 class GraphLink(BaseModel):
@@ -940,6 +942,53 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
     except Exception as e:
         logging.error(f"Error fetching summaries for user {current_user.username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"要約の取得中にエラーが発生しました: {str(e)}")
+
+@app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
+async def get_summary_by_id(
+    summary_id: int,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """IDに基づいて特定の要約履歴とその関連コンテンツを取得するエンドポイント"""
+    summary_history = db.query(SummaryHistory).options(
+        joinedload(SummaryHistory.contents)
+    ).filter(SummaryHistory.id == summary_id).first()
+
+    if not summary_history:
+        raise HTTPException(status_code=404, detail="要約履歴が見つかりません")
+
+    # 権限チェック
+    is_owner = summary_history.user_id == current_user.id
+    is_team_member = False
+    if summary_history.team_id:
+        membership = db.query(TeamMember).filter(
+            TeamMember.team_id == summary_history.team_id,
+            TeamMember.user_id == current_user.id
+        ).first()
+        if membership:
+            is_team_member = True
+
+    if not is_owner and not is_team_member:
+        raise HTTPException(status_code=403, detail="この履歴を閲覧する権限がありません")
+
+    # original_file_pathをJSON文字列からリストに変換
+    deserialized_file_path = (
+        json.loads(summary_history.original_file_path)
+        if summary_history.original_file_path and summary_history.original_file_path.startswith('[')
+        else ([summary_history.original_file_path] if summary_history.original_file_path else None)
+    )
+
+    return SummaryHistoryDetailResponse(
+        id=summary_history.id,
+        user_id=summary_history.user_id,
+        team_id=summary_history.team_id,
+        filename=summary_history.filename,
+        summary=summary_history.summary,
+        created_at=summary_history.created_at.astimezone(timezone.utc) if summary_history.created_at.tzinfo is None else summary_history.created_at,
+        contents=summary_history.contents,
+        original_file_path=deserialized_file_path,
+        parent_summary_id=summary_history.parent_summary_id
+    )
 
 @app.post("/api/comments")
 async def add_comment(request: CommentCreateRequest, current_user: User = Depends(get_required_user), db: Session = Depends(get_db)):
@@ -1744,7 +1793,7 @@ async def get_summary_tree_graph(
         # 親要約へのリンクを追加
         if summary.parent_summary_id:
             parent_node_id = f"summary_{summary.parent_summary_id}"
-            links.append(GraphLink(source=parent_node_id, target=summary_node_id))
+            links.append(GraphLink(source=parent_node_id, target=summary_node_id, type="parent_summary_link"))
 
         # カテゴリごとの質問をグループ化するための辞書
         questions_by_category: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -1830,11 +1879,10 @@ async def get_summary_tree_graph(
                     # ai_chatから抽出した質問もカテゴリごとにグループ化
                     for qa_pair in questions_with_answers:
                         category = qa_pair.get("category", "未分類")
-                        # ai_chatから抽出した質問には、全体の要約を紐付ける
-                        #qa_pair["summarized_qa"] = overall_chat_summary # 全体の要約を個別の質問に紐付け
-                        #qa_pair["history_content_id"] = ai_chat_content.id # ai_chatのHistoryContent IDを紐付け
+                                            # ai_chatから抽出した質問には、全体の要約を紐付ける
+                                            #qa_pair["summarized_qa"] = overall_chat_summary # 全体の要約を個別の質問に紐付け
+                        qa_pair["history_content_id"] = ai_chat_content.id # ai_chatのHistoryContent IDを紐付け
                         questions_by_category[category].append(qa_pair)
-
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to decode chat history JSON for SummaryHistory ID {summary.id}, HistoryContent ID {ai_chat_content.id}: {e}")
             except Exception as e:
@@ -1850,7 +1898,7 @@ async def get_summary_tree_graph(
                 summary_id=summary.id, # どの要約に属するカテゴリか
                 category=category_name,
             ))
-            links.append(GraphLink(source=summary_node_id, target=category_node_id))
+            links.append(GraphLink(source=summary_node_id, target=category_node_id, type="summary_category_link"))
 
             for i, qa_pair in enumerate(qa_pairs):
                 question_node_id = f"question_{summary.id}_{category_name}_{i}"
@@ -1871,9 +1919,9 @@ async def get_summary_tree_graph(
                     history_content_id=qa_pair.get("history_content_id") # NEW FIELD: HistoryContent.id を追加
                 ))
                 
-                links.append(GraphLink(source=category_node_id, target=question_node_id)) # カテゴリノードから質問ノードへリンク
+                links.append(GraphLink(source=category_node_id, target=question_node_id, type="category_question_link")) # カテゴリノードから質問ノードへリンク
 
-    # 質問ノード間の類似度に基づいてエッジを追加
+    # 質問ノード間の類似度に基づいてノードを統合
     question_nodes_data = [
         node for node in nodes if node.type == "user_question"
     ]
@@ -1884,11 +1932,9 @@ async def get_summary_tree_graph(
 
     # 埋め込みベクトルを生成
     embeddings = {}
-    # HistoryContentの埋め込みを一括で取得するためのマップ
     history_content_embeddings_map = {}
     history_content_ids = [node.history_content_id for node in question_nodes_data if node.history_content_id is not None]
     if history_content_ids:
-        # データベースからHistoryContentの埋め込みを一括で取得
         db_history_contents = db.query(HistoryContent).filter(HistoryContent.id.in_(history_content_ids)).all()
         for hc in db_history_contents:
             if hc.embedding:
@@ -1903,71 +1949,171 @@ async def get_summary_tree_graph(
         
         embedding = None
         if node.history_content_id and node.history_content_id in history_content_embeddings_map:
-            # データベースから取得した埋め込みを使用
             embedding_list = history_content_embeddings_map[node.history_content_id]
-            # リストからテンソルに変換
             embedding = torch.tensor(embedding_list)
-            # 埋め込みの次元がモデルの出力次元と異なる場合、再生成
             if embedding.shape[-1] != embedding_model.get_sentence_embedding_dimension():
                 logging.warning(f"Embedding dimension mismatch for HistoryContent ID {node.history_content_id}. Expected {embedding_model.get_sentence_embedding_dimension()}, got {embedding.shape[-1]}. Regenerating embedding.")
-                embedding = None # 再生成をトリガー
+                embedding = None
 
         if embedding is None:
-            # データベースに埋め込みがない場合、デコードに失敗した場合、または次元が異なる場合、q_textから生成
             embedding = embedding_model.encode(q_text, convert_to_tensor=True)
         
         if embedding is not None:
-            embeddings[q_id] = embedding # テンソルを直接格納
+            embeddings[q_id] = embedding
 
-    # コサイン類似度を計算するヘルパー関数
     def calculate_cosine_similarity(vec1, vec2):
-        # SentenceTransformerのutil.cos_simを使用
-        # vec1とvec2が1次元テンソルの場合、2次元テンソルに変換
         if vec1.dim() == 1:
             vec1 = vec1.unsqueeze(0)
         if vec2.dim() == 1:
             vec2 = vec2.unsqueeze(0)
         cosine_scores = util.cos_sim(vec1, vec2)
-        return cosine_scores.item() # スカラー値を取得
+        return cosine_scores.item()
 
-    SIMILARITY_THRESHOLD = 0.95 # 類似度の閾値
-    MAX_SIMILAR_EDGES_PER_NODE = 1 # 各質問ノードが持つ類似度エッジの最大数
+    SIMILARITY_THRESHOLD = 0.85
 
-    # 類似度エッジを追加
-    # 各質問ノードについて、類似度が高い上位N個の質問ノードとのみエッジを張る
-    added_edges = set() # 重複エッジを避けるためのセット
+    # 類似ノードをグループ化するロジック
+    node_to_group_map = {}
+    groups = [] # 各グループはノードIDのリスト
 
-    for i in range(len(question_ids)):
-        q_id1 = question_ids[i]
-        if q_id1 not in embeddings: continue
+    # 質問ノードをcreated_atでソートし、古いものから順に処理することで、代表ノードの選出を安定させる
+    # ソート前にquestion_created_atがoffset-awareであることを保証
+    for node in question_nodes_data:
+        if node.question_created_at and node.question_created_at.tzinfo is None:
+            node.question_created_at = node.question_created_at.replace(tzinfo=timezone.utc)
+        elif node.question_created_at is None:
+            node.question_created_at = datetime.min.replace(tzinfo=timezone.utc) # Noneの場合は最小値のUTC aware datetimeを設定
 
-        similarities = []
-        for j in range(len(question_ids)):
-            q_id2 = question_ids[j]
-            if q_id1 == q_id2 or q_id2 not in embeddings: continue # 同じノードまたは埋め込みがないノードはスキップ
+    sorted_question_nodes_data = sorted(question_nodes_data, key=lambda x: x.question_created_at)
+    sorted_question_ids = [node.id for node in sorted_question_nodes_data]
 
-            # エッジの重複を避けるため、正規化されたタプルを使用
-            edge_tuple = tuple(sorted((q_id1, q_id2)))
-            if edge_tuple in added_edges: continue
+    for q_id1 in sorted_question_ids:
+        if q_id1 not in embeddings:
+            continue
+
+        if q_id1 in node_to_group_map:
+            continue
+
+        current_group = [q_id1]
+        node_to_group_map[q_id1] = current_group
+
+        for q_id2 in sorted_question_ids:
+            if q_id1 == q_id2 or q_id2 not in embeddings:
+                continue
+            
+            if q_id2 in node_to_group_map:
+                continue
 
             vec1_tensor = embeddings[q_id1]
             vec2_tensor = embeddings[q_id2]
             
             sim = calculate_cosine_similarity(vec1_tensor, vec2_tensor)
             if sim >= SIMILARITY_THRESHOLD:
-                similarities.append((sim, q_id2))
+                current_group.append(q_id2)
+                node_to_group_map[q_id2] = current_group
         
-        # 類似度が高い順にソートし、上位N個のエッジのみを選択
-        similarities.sort(key=lambda x: x[0], reverse=True)
-        for sim, q_id2 in similarities[:MAX_SIMILAR_EDGES_PER_NODE]:
-            links.append(GraphLink(source=q_id1, target=q_id2, type="similarity_link", directed=False))
-            added_edges.add(tuple(sorted((q_id1, q_id2)))) # 追加したエッジを記録
+        groups.append(current_group)
 
-    logging.info(f"Generated links: {links}")
-    return GraphData(nodes=nodes, links=links)
+    # 統合されたノードとリンクを生成
+    final_nodes: List[GraphNode] = []
+    final_links: List[GraphLink] = []
+    
+    # 統合された質問ノードのIDと、それが置き換える元の質問ノードIDのマップ
+    integrated_node_replacements: Dict[str, str] = {} # {元の質問ノードID: 統合ノードID}
 
+    for group_index, group in enumerate(groups):
+        if len(group) > 1: # 類似ノードが複数ある場合のみ統合
+            # 代表ノードを選出 (ここではグループ内の最も古いノードを代表とする)
+            representative_node_id = group[0] # ソート済みリストから取得した最初のノード
+            representative_node_data = next(node for node in question_nodes_data if node.id == representative_node_id)
+            
+            integrated_label = f"類似質問 ({len(group)}件): {representative_node_data.label}"
+            integrated_node_id = f"integrated_question_group_{representative_node_data.summary_id}_{group_index}"
+            
+            original_questions_details_list = []
+            for original_q_id in group:
+                original_node = next(node for node in question_nodes_data if node.id == original_q_id)
+                original_questions_details_list.append({
+                    "id": original_node.id,
+                    "label": original_node.label,
+                    "question_id": original_node.question_id
+                })
 
-@app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
+            integrated_node = GraphNode(
+                id=integrated_node_id,
+                label=integrated_label,
+                type="user_question_group",
+                summary_id=representative_node_data.summary_id,
+                question_id=integrated_node_id,
+                ai_answer=None,
+                ai_answer_summary=None,
+                question_created_at=representative_node_data.question_created_at,
+                category=representative_node_data.category,
+                history_content_id=None,
+                original_summary_id=representative_node_data.original_summary_id,
+                grouped_question_ids=group,
+                original_questions_details=original_questions_details_list # ここで詳細情報を追加
+            )
+            final_nodes.append(integrated_node)
+
+            for original_q_id in group:
+                integrated_node_replacements[original_q_id] = integrated_node_id
+        else: # 類似ノードがない単独の質問ノードはそのまま追加
+            q_id = group[0]
+            node = next(node for node in question_nodes_data if node.id == q_id)
+            final_nodes.append(node)
+
+    # 元のノードリストから質問ノード以外のノードをfinal_nodesに追加
+    for node in nodes:
+        if node.type != "user_question":
+            final_nodes.append(node)
+    
+    # 元のリンクリストを再構築
+    # まず、カテゴリノードから統合された質問ノードへのリンクを生成
+    for category_name, qa_pairs in questions_by_category.items():
+        category_node_id = f"category_{summary.id}_{category_name}"
+        # このカテゴリに属する質問ノードが統合された場合、統合ノードへのリンクを作成
+        for qa_pair in qa_pairs:
+            question_node_id = f"question_{summary.id}_{category_name}_{qa_pairs.index(qa_pair)}"
+            if question_node_id in integrated_node_replacements:
+                integrated_node_id = integrated_node_replacements[question_node_id]
+                # 重複を避けてリンクを追加
+                if not any(fl.source == category_node_id and fl.target == integrated_node_id and fl.type == "category_question_link" for fl in final_links):
+                    final_links.append(GraphLink(source=category_node_id, target=integrated_node_id, type="category_question_link"))
+            else:
+                # 統合されなかった質問ノードへのリンクはそのまま追加
+                final_links.append(GraphLink(source=category_node_id, target=question_node_id, type="category_question_link"))
+
+    # その他のリンクを処理
+    for link in links:
+        # category_question_link は既に処理済みなのでスキップ
+        if link.type == "category_question_link":
+            continue
+
+        source_id = link.source
+        target_id = link.target
+
+        # リンクのソースまたはターゲットが統合された質問ノードの場合、統合ノードIDに置き換える
+        if source_id in integrated_node_replacements:
+            source_id = integrated_node_replacements[source_id]
+        if target_id in integrated_node_replacements:
+            target_id = integrated_node_replacements[target_id]
+        
+        # 統合された質問ノードへのリンクで、ソースとターゲットが同じになる場合は追加しない
+        if source_id == target_id:
+            continue
+
+        # 既に同じリンクが存在しないかチェック (特に統合ノードへのリンクで重複が発生しやすいため)
+        if not any(fl.source == source_id and fl.target == target_id and fl.type == link.type for fl in final_links):
+            final_links.append(GraphLink(source=source_id, target=target_id, type=link.type, directed=link.directed))
+
+    logging.info(f"Generated final nodes count: {len(final_nodes)}")
+    for node in final_nodes:
+        logging.info(f"  Node: id={node.id}, label={node.label}, type={node.type}, grouped_question_ids={node.grouped_question_ids}")
+
+    logging.info(f"Generated final links count: {len(final_links)}")
+    for link in final_links:
+        logging.info(f"  Link: source={link.source}, target={link.target}, type={link.type}")
+    return GraphData(nodes=final_nodes, links=final_links)
 async def get_summary_detail(
     summary_id: int,
     current_user: User = Depends(get_required_user),

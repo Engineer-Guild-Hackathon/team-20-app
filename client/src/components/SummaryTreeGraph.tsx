@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
 import { Box, CircularProgress, Typography, Paper, Button, List, ListItem } from '@mui/material';
 import { useAuth } from '../AuthContext';
@@ -13,7 +13,7 @@ cytoscape.use(fcose);
 interface GraphNode {
   id: string;
   label: string;
-  type: 'summary' | 'user_question' | 'category'; // ai_messageはノードとして表示しない
+  type: 'summary' | 'user_question' | 'category' | 'user_question_group'; // ai_messageはノードとして表示しない
   summary_id?: number;
   question_id?: string; // 質問ノード用
   ai_answer?: string; // 質問ノード用
@@ -23,6 +23,8 @@ interface GraphNode {
   summary_created_at?: string; // NEW FIELD
   category?: string; // NEW FIELD: Add category to GraphNode
   original_summary_id?: number; // NEW FIELD: 質問が紐づく元の要約ID
+  grouped_question_ids?: string[]; // NEW FIELD: 統合された質問ノードのIDリスト
+  original_questions_details?: { id: string; label: string; question_id?: string }[]; // NEW FIELD: 統合された質問の詳細
 }
 
 interface GraphLink {
@@ -44,7 +46,8 @@ const SummaryTreeGraph: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [isSummarized, setIsSummarized] = useState<boolean>(true); // NEW: 要約表示/元の回答表示を切り替えるstate
-  const [cy, setCy] = useState<cytoscape.Core | null>(null); // Cytoscape.js インスタンスを保存
+  const cyRef = useRef<cytoscape.Core | null>(null); // Cytoscape.js インスタンスを保存 (useRefを使用)
+  const [expandedGroupNodes, setExpandedGroupNodes] = useState<{ [key: string]: boolean }>({}); // NEW: 展開状態を管理
 
   const fetchGraphData = useCallback(async () => {
     setLoading(true);
@@ -137,6 +140,12 @@ const SummaryTreeGraph: React.FC = () => {
           data: { ...node, depth: depth },
           classes: `${node.type} ${node.category ? `category-${node.category}` : ''}`, // カテゴリクラスを追加
         });
+      } else if (node.type === 'user_question_group') { // NEW: 統合された質問ノードの処理
+        const depth = depthMap.get(node.id) || 2; // user_question と同じ深さ
+        elementsWithDepth.push({
+          data: { ...node, depth: depth, locked: true }, // locked: true を追加
+          classes: `${node.type} ${node.category ? `category-${node.category}` : ''}`, // カテゴリクラスを追加
+        });
       }
     });
 
@@ -151,7 +160,7 @@ const SummaryTreeGraph: React.FC = () => {
           data: { source: effectiveSourceId, target: link.target, type: 'summary_category_link' },
           classes: 'summary_category_link',
         });
-      } else if (sourceNode?.type === 'category' && targetNode?.type === 'user_question') {
+      } else if (sourceNode?.type === 'category' && (targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group')) { // NEW: 統合された質問ノードへのリンクも処理
         elementsWithDepth.push({
           data: { source: link.source, target: link.target, type: 'category_question_link' },
           classes: 'category_question_link',
@@ -171,7 +180,7 @@ const SummaryTreeGraph: React.FC = () => {
             classes: 'parent_summary_link',
           });
         }
-      } else if (targetNode?.type === 'user_question' && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
+      } else if ((targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group') && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
         const originalSummaryId = `summary_${targetNode.original_summary_id}`;
         const effectiveSourceId = childToRootSummaryMap.get(originalSummaryId) || originalSummaryId;
         elementsWithDepth.push({
@@ -187,20 +196,20 @@ const SummaryTreeGraph: React.FC = () => {
   const layout = React.useMemo(() => ({
     name: 'fcose',
     quality: 'proof', // 'draft', 'default', 'proof'
-    animate: false, // whether to enable animation when the layout is running
-    animationDuration: 500, // duration of animation in ms if enabled
+    animate: true, // アニメーションを有効にする
+    animationDuration: 300, // アニメーション時間を短縮
     animationEasing: 'ease-out', // easing of animation if enabled
-    fit: true, // whether to fit the viewport to the graph
+    // fit: true, // 部分的なレイアウトではfitは無効にするため、ここでは削除
     padding: 50, // the padding on the sides of the graph
     nodeDimensionsIncludeLabels: true, // whether to include labels in node dimensions
     tile: true, // whether to enable tiling
-    tilingPaddingVertical: 10, // vertical padding for tiling
-    tilingPaddingHorizontal: 10, // horizontal padding for tiling
-    gravity: 0.5, // gravity force (constant) for all nodes
+    tilingPaddingVertical: 20, // vertical padding for tiling (少し増やす)
+    tilingPaddingHorizontal: 20, // horizontal padding for tiling (少し増やす)
+    gravity: 0.5, // gravity force (constant) for all nodes (少し強める)
     numIter: 2500, // maximum number of iterations to perform
-    idealEdgeLength: 100, // ideal (user-specified) edge length
+    idealEdgeLength: 120, // ideal (user-specified) edge length (少し長くする)
     edgeElasticity: 0.45, // elasticity constant for the edge force
-    nestingFactor: 0.1, // nesting factor (multiplier) for the inter-graph force
+    nestingFactor: 0.2, // nesting factor (multiplier) for the inter-graph force (少し強める)
     gravityRange: 3.8, // range of the gravity force
     gravityCompound: 1.0, // gravity force (constant) for compound nodes
     gravityRoot: 1.0, // gravity force (constant) for the highest level compound nodes
@@ -210,11 +219,31 @@ const SummaryTreeGraph: React.FC = () => {
   }), []);
 
   useEffect(() => {
-    if (cy && processedElements.length > 0) {
-      cy.nodes().ungrabify(); // ノードをドラッグできないようにする
-      cy.layout(layout).run(); // レイアウトを明示的に再実行
+    if (!cyRef.current) return; // cyRef.currentがnullの場合は何もしない
+
+    // processedElementsが空の場合はレイアウトを実行しない
+    if (processedElements.length === 0) {
+      // 既存のノードやエッジを全て削除する
+      cyRef.current.remove(cyRef.current.elements()); // cyRef.current を参照
+      return;
     }
-  }, [cy, processedElements, layout]);
+
+    // cy.layout() の呼び出しを try-catch で囲む
+    try {
+      cyRef.current.nodes().ungrabify(); // cyRef.current を参照
+      cyRef.current.layout(layout).run(); // cyRef.current を参照
+    } catch (e) {
+      console.error("Error running layout:", e);
+      // エラーが発生した場合の追加の処理（例: レイアウトをリセットするなど）
+    }
+
+    // クリーンアップ関数を返す
+    return () => {
+      if (cyRef.current) { // cyRef.current を参照
+        cyRef.current.destroy(); // cyRef.current を参照
+      }
+    };
+  }, [cyRef.current, processedElements, layout]); // 依存配列も cyRef.current に変更
 
   const style = [
     {
@@ -261,6 +290,18 @@ const SummaryTreeGraph: React.FC = () => {
       style: {
         'background-color': '#4caf50', // Green
         'border-color': '#81c784',
+      },
+    },
+    { // NEW: 統合された質問ノードのスタイル
+      selector: '.user_question_group',
+      style: {
+        'background-color': '#ff9800', // Orange
+        'border-color': '#ffb74d',
+        'shape': 'round-rectangle', // 統合ノードは四角形に
+        'text-max-width': '180px', // ラベルが長くなる可能性があるので幅を広げる
+        'width': 'mapData(label.length, 1, 50, 100, 250)', // Dynamic width based on label length
+        'height': 'mapData(label.length, 1, 50, 50, 100)', // Dynamic height
+        'locked': true, // NEW: ノードを固定する
       },
     },
     {
@@ -325,20 +366,96 @@ const SummaryTreeGraph: React.FC = () => {
         'cursor': 'pointer',
       },
     },
+    {
+      selector: '.group_child_link',
+      style: {
+        'line-color': '#a0a0a0',
+        'target-arrow-color': '#a0a0a0',
+        'line-style': 'dotted',
+        'width': 1,
+        'opacity': 0.5,
+      },
+    },
   ];
 
-  const handleNodeClick = (event: any) => {
+  const handleNodeClick = useCallback((event: any) => { // useCallback でラップ
     const node = event.target;
     if (node.isNode()) {
       const nodeData = node.data();
-      // 非表示対象の質問ノードは選択されても詳細を表示しない
-      // hiddenQuestionNodeIdsはuseEffectスコープ内なので、ここでは直接参照できない。
-      // そのため、selectedNodeがuser_questionタイプで、かつparent_summary_idを持つsummaryに紐づく場合は詳細を表示しない、というロジックを再構築する必要がある。
-      // ただし、elementsWithDepthに追加されていないノードはそもそも選択できないため、このチェックは不要。
-      // ここではシンプルに、選択されたノードのデータをセットする。
-      setSelectedNode(nodeData);
+      setSelectedNode(nodeData); // 右側の詳細パネルに表示
+
+      if (nodeData.type === 'user_question_group' && cyRef.current) { // cyRef.current を参照
+        const isExpanded = expandedGroupNodes[nodeData.id];
+        const newExpandedGroupNodes = { ...expandedGroupNodes };
+
+        const affectedElements = cyRef.current!.collection(); // cyRef.current が null でないことをアサーション
+        affectedElements.merge(cyRef.current!.$(`#${nodeData.id}`)); // cyRef.current が null でないことをアサーション
+
+        if (isExpanded) {
+          // 折りたたむ場合: 子ノードとリンクを削除
+          nodeData.original_questions_details?.forEach((originalQuestion: any) => {
+            const safeOriginalQuestionId = originalQuestion.id.replace(/[^a-zA-Z0-9-_]/g, '_'); // 英数字、ハイフン、アンダースコア以外をアンダースコアに置換
+            const childNodeId = `child_question_${nodeData.id}_${safeOriginalQuestionId}`;
+            console.log(`Attempting to remove child node with ID: ${childNodeId}`); // デバッグログ
+            const childNode = cyRef.current!.$(`#${childNodeId}`);
+            console.log(`Child node found (length): ${childNode.length}`); // デバッグログ
+            if (childNode.length > 0) {
+              cyRef.current!.remove(childNode); // 子ノードを削除
+            }
+            const edge = cyRef.current!.$(`edge[source='${nodeData.id}'][target='${childNodeId}']`);
+            console.log(`Edge found (length): ${edge.length}`); // デバッグログ
+            if (edge.length > 0) {
+              cyRef.current!.remove(edge); // エッジを削除
+            }
+          });
+          newExpandedGroupNodes[nodeData.id] = false;
+        } else {
+          // 展開する場合: 子ノードとリンクを追加
+          const newElements: any[] = [];
+          nodeData.original_questions_details?.forEach((originalQuestion: any) => {
+            const safeOriginalQuestionId = originalQuestion.id.replace(/[^a-zA-Z0-9-_]/g, '_'); // 英数字、ハイフン、アンダースコア以外をアンダースコアに置換
+            const childNodeId = `child_question_${nodeData.id}_${safeOriginalQuestionId}`;
+            console.log(`Attempting to add child node with ID: ${childNodeId}`); // デバッグログ
+            newElements.push({
+              data: {
+                id: childNodeId,
+                label: originalQuestion.label,
+                type: 'user_question', // 子ノードはuser_questionタイプ
+                summary_id: nodeData.summary_id,
+                question_id: originalQuestion.question_id,
+                ai_answer: originalQuestion.ai_answer, // 必要であれば元の質問のAI回答も渡す
+                ai_answer_summary: originalQuestion.ai_answer_summary,
+                category: nodeData.category,
+                parent_group_id: nodeData.id, // 親グループノードのIDを保持
+                locked: true, // NEW: 子ノードも固定する
+              },
+              classes: 'user_question',
+            });
+            newElements.push({
+              data: {
+                id: `${nodeData.id}-${childNodeId}-link`,
+                source: nodeData.id,
+                target: childNodeId,
+                type: 'group_child_link',
+                directed: true,
+              },
+              classes: 'group_child_link',
+            });
+            affectedElements.merge(cyRef.current!.$(`#${childNodeId}`)); // 追加対象の子ノードもaffectedElementsに含める
+          });
+          cyRef.current!.add(newElements); // cyRef.current を参照
+          newExpandedGroupNodes[nodeData.id] = true;
+        }
+        setExpandedGroupNodes(newExpandedGroupNodes);
+        // cyRef.current はここで null でないことが保証されている
+        // 影響を受ける要素とその周辺の要素に対してレイアウトを適用
+        affectedElements.union(affectedElements.neighborhood()).layout({
+          ...layout,
+          // fit: false, // 部分的なレイアウトなのでフィットはしない (型エラーのため削除)
+        }).run();
+      }
     }
-  };
+  }, [expandedGroupNodes, layout]); // 依存配列に expandedGroupNodes と layout を追加
 
   if (loading) {
     return (
@@ -374,15 +491,16 @@ const SummaryTreeGraph: React.FC = () => {
           stylesheet={style}
           layout={layout}
           cy={(cyInstance) => {
-            if (cyInstance) {
-              cyInstance.on('tap', 'node', handleNodeClick);
-              setCy(cyInstance); // cy インスタンスを state に保存
+            if (!cyInstance) return; // cyInstanceがnullの場合は何もしない
+
+            // 既存のイベントリスナーを削除してから新しいものを追加
+            // これにより、ホットリロードなどで複数回イベントリスナーが登録されるのを防ぐ
+            if (cyRef.current) { // cyRef.current を参照
+              cyRef.current.removeListener('tap', 'node', handleNodeClick);
             }
-            return () => {
-              if (cyInstance) {
-                cyInstance.destroy();
-              }
-            };
+
+            cyInstance.on('tap', 'node', handleNodeClick);
+            cyRef.current = cyInstance; // cyRef.current にインスタンスを保存
           }}
           style={{ width: '100%', height: '100%' }}
         />
@@ -433,6 +551,20 @@ const SummaryTreeGraph: React.FC = () => {
                   {selectedNode.ai_answer}
                 </ReactMarkdown>
               )}
+            </Box>
+          )}
+          {selectedNode.type === 'user_question_group' && selectedNode.original_questions_details && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2">統合された質問:</Typography>
+              <List dense>
+                {selectedNode.original_questions_details.map((originalQuestion, index) => (
+                  <ListItem key={index}>
+                    <Typography variant="body2">
+                      - {originalQuestion.label} (ID: {originalQuestion.question_id})
+                    </Typography>
+                  </ListItem>
+                ))}
+              </List>
             </Box>
           )}
           {selectedNode.type === 'summary' && graphData && ( // 要約ノードの場合のみ質問リストを表示

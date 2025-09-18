@@ -138,18 +138,22 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
 
   // 表示用メッセージの管理
   useEffect(() => {
+    console.log("AiAssistant useEffect triggered. viewMode:", viewMode, "historicalContents:", historicalContents, "currentMessages:", currentMessages);
     if (viewMode === 'history') {
       // 履歴表示モード: 履歴データをロード
       const chatHistory = historicalContents?.find(c => c.section_type === 'ai_chat');
+      console.log("Found chatHistory in historicalContents:", chatHistory);
       if (chatHistory && chatHistory.content) {
         try {
           const parsedMessages = JSON.parse(chatHistory.content);
+          console.log("Parsed chat messages:", parsedMessages);
           setDisplayMessages(parsedMessages);
         } catch (e) {
           console.error("Failed to parse chat history:", e);
           setDisplayMessages([]);
         }
       } else {
+        console.log("No chat history found or content is empty.");
         setDisplayMessages([]);
       }
     } else {

@@ -501,6 +501,8 @@ function App() {
       });
       if (!response.ok) throw new Error('履歴詳細の読み込みに失敗しました。');
       const data = await response.json();
+      console.log("Fetched summary detail data:", data);
+      console.log("data.contents from API:", data.contents);
 
       // 基本情報の設定
       setPdfSummary(data.summary);
@@ -539,8 +541,8 @@ function App() {
       }
 
       // 現在のチャットモードに切り替え
-      setViewMode('current');
-      setHistoricalContents(undefined); // 履歴モードではないのでクリア
+      setViewMode('history'); // 履歴表示モードに設定
+      setHistoricalContents(data.contents); // 履歴コンテンツをセット
 
       navigate('/');
     } catch (error) {
