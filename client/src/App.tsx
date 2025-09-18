@@ -102,6 +102,8 @@ function App() {
   const [loadedSessionState, setLoadedSessionState] = useState<SessionState | null>(null); // Moved here
   const navigate = useNavigate();
 
+  const [isSaving, setIsSaving] = useState<boolean>(false); // NEW: 保存中の状態
+
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
@@ -607,6 +609,8 @@ function App() {
     const token = localStorage.getItem('access_token');
     if (!token) return undefined; // Return undefined on failure
 
+    setIsSaving(true); // 保存開始
+
     let currentUsername = usernameFromProps; // PdfViewerから渡されたusernameを優先
 
     // usernameFromPropsがnullまたはundefinedの場合、Appのusernameステートを使用
@@ -678,6 +682,8 @@ function App() {
         console.error('Error saving history:', error);
         showSnackbar(error instanceof Error ? error.message : (typeof error === 'string' ? error : '保存中に不明なエラーが発生しました。'), 'error');
         return undefined; // Return undefined on error
+    } finally {
+      setIsSaving(false); // 保存終了
     }
   };
 
@@ -705,6 +711,11 @@ function App() {
     if (!isLoggedIn) {
       showSnackbar('コメント機能を利用するにはログインが必要です。', 'warning');
       setIsLoginModalOpen(true);
+      return;
+    }
+
+    if (isSaving) { // NEW: 保存中の場合は処理を中断
+      showSnackbar('現在、要約を保存中です。しばらくお待ちください。', 'info');
       return;
     }
 
@@ -818,6 +829,7 @@ function App() {
                           handleSaveSummary(pdfSummary, pdfFilename, teamIdToSave, teamNameToSave, pdfTags, username);
                         }}
                         startIcon={<SaveIcon />}
+                        disabled={isSaving} // NEW: 保存中はボタンを無効化
                       >
                         現在の内容を保存
                       </Button>

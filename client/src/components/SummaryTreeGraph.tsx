@@ -27,6 +27,8 @@ interface GraphNode {
 interface GraphLink {
   source: string;
   target: string;
+  type?: string; // NEW FIELD: Add type to GraphLink
+  directed?: boolean; // NEW FIELD: エッジの方向性を示す
 }
 
 interface GraphData {
@@ -149,6 +151,11 @@ const SummaryTreeGraph: React.FC = () => {
           data: { source: link.source, target: link.target, type: 'category_question_link' },
           classes: 'category_question_link',
         });
+      } else if (link.type === 'similarity_link') { // NEW: 類似度リンクを追加
+        elementsWithDepth.push({
+          data: { source: link.source, target: link.target, type: 'similarity_link' },
+          classes: 'similarity_link',
+        });
       } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
         elementsWithDepth.push({
           data: { source: link.source, target: link.target, type: 'parent_summary_link' },
@@ -249,6 +256,13 @@ const SummaryTreeGraph: React.FC = () => {
         'curve-style': 'bezier',
         'control-point-step-size': 40, // エッジの重なりを減らすために追加
         'opacity': 0.7,
+        'arrow-scale': 1, // 矢印のサイズを調整
+      },
+    },
+    {
+      selector: 'edge[directed = false]', // directedがfalseのエッジ
+      style: {
+        'target-arrow-shape': 'none', // 矢印を表示しない
       },
     },
     {

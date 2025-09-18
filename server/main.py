@@ -24,8 +24,10 @@ from starlette.concurrency import run_in_threadpool
 from collections import defaultdict
 from sentence_transformers import SentenceTransformer, util
 
+import torch # NEW: torchをインポート
+
 # Initialize SentenceTransformer model globally
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model = SentenceTransformer('all-mpnet-base-v2')
 
 # ファイル保存ディレクトリの設定
 UPLOAD_DIRECTORY = "./shared_files"
@@ -350,12 +352,14 @@ class GraphNode(BaseModel):
     question_created_at: Optional[datetime] = None # NEW FIELD
     summary_created_at: Optional[datetime] = None # NEW FIELD
     category: Optional[str] = None # NEW FIELD: Add category to GraphNode
+    history_content_id: Optional[int] = None # NEW FIELD: Reference to HistoryContent.id
 
 
 class GraphLink(BaseModel):
     source: str
     target: str
     type: Optional[str] = None
+    directed: Optional[bool] = True # NEW FIELD: エッジの方向性を示す
 
 class GraphData(BaseModel):
     nodes: List[GraphNode]
@@ -741,9 +745,7 @@ async def generate_category_with_gemini(question_text: str) -> str:
     client = genai.Client(api_key=API_KEY)
     try:
         prompt = (
-            f"以下の質問テキストに最も適したカテゴリを一つだけ選んでください。\n"
-            f"選択肢: 技術, ビジネス, 研究, その他\n"
-            f"もし上記の選択肢に当てはまらない場合は、質問内容から新しいカテゴリ名を簡潔に生成してください。\n"
+            f"以下の質問テキストに最も適したカテゴリ名を質問内容から簡潔に生成してください。\n"
             f"回答はカテゴリ名のみを返してください。\n\n質問テキスト:\n{question_text}"
         )
         response = await client.aio.models.generate_content(
@@ -1170,10 +1172,33 @@ async def save_summary(
                             generated_category = await generate_category_with_gemini(message.get("text", ""))
                             message["category"] = generated_category
 
+                    # ユーザーメッセージとAI回答、関連する要約を結合して埋め込みを計算
+                    combined_texts_for_embedding = []
+                    for i, message in enumerate(chat_content_data):
+                        if message.get("sender") == "user":
+                            user_question_text = message.get("text", "")
+                            ai_answer_text = ""
+                            # 次のメッセージがAIの回答であれば取得
+                            if i + 1 < len(chat_content_data) and chat_content_data[i+1].get("sender") == "ai":
+                                ai_answer_text = chat_content_data[i+1].get("text", "")
+                            
+                            # 関連する要約テキストを取得
+                            related_summary_text = new_history.summary # 現在保存しようとしている要約
+
+                            combined_text = f"質問: {user_question_text} 回答: {ai_answer_text} 要約: {related_summary_text}"
+                            combined_texts_for_embedding.append(combined_text)
+
+                    user_question_embeddings = None
+                    if combined_texts_for_embedding:
+                        embeddings_list = [embedding_model.encode(t, convert_to_tensor=True) for t in combined_texts_for_embedding]
+                        avg_embedding = sum([e.cpu().numpy() for e in embeddings_list]) / len(embeddings_list)
+                        user_question_embeddings = avg_embedding
+
                     new_chat_history_content = HistoryContent(
                         summary_history_id=new_history.id,
                         section_type='ai_chat',
                         content=json.dumps(chat_content_data), # JSON文字列として保存
+                        embedding=json.dumps(user_question_embeddings.tolist()) if user_question_embeddings is not None else None, # NEW: ユーザー質問の埋め込みを保存
                         created_at=datetime.now(timezone.utc),
                         updated_at=datetime.now(timezone.utc)
                     )
@@ -1234,10 +1259,33 @@ async def save_summary(
                             generated_category = await generate_category_with_gemini(message.get("text", ""))
                             message["category"] = generated_category
 
+                    # ユーザーメッセージとAI回答、関連する要約を結合して埋め込みを計算
+                    combined_texts_for_embedding = []
+                    for i, message in enumerate(chat_content_data):
+                        if message.get("sender") == "user":
+                            user_question_text = message.get("text", "")
+                            ai_answer_text = ""
+                            # 次のメッセージがAIの回答であれば取得
+                            if i + 1 < len(chat_content_data) and chat_content_data[i+1].get("sender") == "ai":
+                                ai_answer_text = chat_content_data[i+1].get("text", "")
+                            
+                            # 関連する要約テキストを取得
+                            related_summary_text = new_history.summary # 現在保存しようとしている要約
+
+                            combined_text = f"質問: {user_question_text} 回答: {ai_answer_text} 要約: {related_summary_text}"
+                            combined_texts_for_embedding.append(combined_text)
+
+                    user_question_embeddings = None
+                    if combined_texts_for_embedding:
+                        embeddings_list = [embedding_model.encode(t, convert_to_tensor=True) for t in combined_texts_for_embedding]
+                        avg_embedding = sum([e.cpu().numpy() for e in embeddings_list]) / len(embeddings_list)
+                        user_question_embeddings = avg_embedding
+
                     new_chat_history_content = HistoryContent(
                         summary_history_id=new_history.id,
                         section_type='ai_chat',
                         content=json.dumps(chat_content_data), # JSON文字列として保存
+                        embedding=json.dumps(user_question_embeddings.tolist()) if user_question_embeddings is not None else None, # NEW: ユーザー質問の埋め込みを保存
                         created_at=datetime.now(timezone.utc),
                         updated_at=datetime.now(timezone.utc)
                     )
@@ -1737,7 +1785,8 @@ async def get_summary_tree_graph(
                     ai_answer=qa_pair["answer"],
                     ai_answer_summary=summarized_ai_answer, # NEW: 要約されたAI回答を追加
                     question_created_at=qa_pair["timestamp"], # NEW FIELD: question_created_at を追加
-                    category=qa_pair.get("category") # NEW FIELD: category を追加
+                    category=qa_pair.get("category"), # NEW FIELD: category を追加
+                    history_content_id=chat_content.id # NEW FIELD: HistoryContent.id を追加
                 ))
                 
                 links.append(GraphLink(source=category_node_id, target=question_node_id)) # カテゴリノードから質問ノードへリンク
@@ -1753,35 +1802,86 @@ async def get_summary_tree_graph(
 
     # 埋め込みベクトルを生成
     embeddings = {}
-    for q_id, q_text in question_texts.items():
-        # SentenceTransformerを使用して埋め込みを生成
-        embedding = embedding_model.encode(q_text, convert_to_tensor=True)
+    # HistoryContentの埋め込みを一括で取得するためのマップ
+    history_content_embeddings_map = {}
+    history_content_ids = [node.history_content_id for node in question_nodes_data if node.history_content_id is not None]
+    if history_content_ids:
+        # データベースからHistoryContentの埋め込みを一括で取得
+        db_history_contents = db.query(HistoryContent).filter(HistoryContent.id.in_(history_content_ids)).all()
+        for hc in db_history_contents:
+            if hc.embedding:
+                try:
+                    history_content_embeddings_map[hc.id] = json.loads(hc.embedding)
+                except json.JSONDecodeError:
+                    logging.warning(f"Failed to decode embedding for HistoryContent ID {hc.id}")
+
+    for node in question_nodes_data:
+        q_id = node.id
+        q_text = node.label
+        
+        embedding = None
+        if node.history_content_id and node.history_content_id in history_content_embeddings_map:
+            # データベースから取得した埋め込みを使用
+            embedding_list = history_content_embeddings_map[node.history_content_id]
+            # リストからテンソルに変換
+            embedding = torch.tensor(embedding_list)
+            # 埋め込みの次元がモデルの出力次元と異なる場合、再生成
+            if embedding.shape[-1] != embedding_model.get_sentence_embedding_dimension():
+                logging.warning(f"Embedding dimension mismatch for HistoryContent ID {node.history_content_id}. Expected {embedding_model.get_sentence_embedding_dimension()}, got {embedding.shape[-1]}. Regenerating embedding.")
+                embedding = None # 再生成をトリガー
+
+        if embedding is None:
+            # データベースに埋め込みがない場合、デコードに失敗した場合、または次元が異なる場合、q_textから生成
+            embedding = embedding_model.encode(q_text, convert_to_tensor=True)
+        
         if embedding is not None:
             embeddings[q_id] = embedding # テンソルを直接格納
 
     # コサイン類似度を計算するヘルパー関数
     def calculate_cosine_similarity(vec1, vec2):
         # SentenceTransformerのutil.cos_simを使用
+        # vec1とvec2が1次元テンソルの場合、2次元テンソルに変換
+        if vec1.dim() == 1:
+            vec1 = vec1.unsqueeze(0)
+        if vec2.dim() == 1:
+            vec2 = vec2.unsqueeze(0)
         cosine_scores = util.cos_sim(vec1, vec2)
         return cosine_scores.item() # スカラー値を取得
 
-    SIMILARITY_THRESHOLD = 0.8 # 類似度の閾値
+    SIMILARITY_THRESHOLD = 0.95 # 類似度の閾値
+    MAX_SIMILAR_EDGES_PER_NODE = 1 # 各質問ノードが持つ類似度エッジの最大数
 
     # 類似度エッジを追加
-    for i in range(len(question_ids)):
-        for j in range(i + 1, len(question_ids)):
-            q_id1 = question_ids[i]
-            q_id2 = question_ids[j]
-            
-            if q_id1 in embeddings and q_id2 in embeddings:
-                # 埋め込みは既にテンソル形式で保存されている
-                vec1_tensor = embeddings[q_id1]
-                vec2_tensor = embeddings[q_id2]
-                
-                sim = calculate_cosine_similarity(vec1_tensor, vec2_tensor)
-                if sim >= SIMILARITY_THRESHOLD:
-                    links.append(GraphLink(source=q_id1, target=q_id2, type="similarity_link"))
+    # 各質問ノードについて、類似度が高い上位N個の質問ノードとのみエッジを張る
+    added_edges = set() # 重複エッジを避けるためのセット
 
+    for i in range(len(question_ids)):
+        q_id1 = question_ids[i]
+        if q_id1 not in embeddings: continue
+
+        similarities = []
+        for j in range(len(question_ids)):
+            q_id2 = question_ids[j]
+            if q_id1 == q_id2 or q_id2 not in embeddings: continue # 同じノードまたは埋め込みがないノードはスキップ
+
+            # エッジの重複を避けるため、正規化されたタプルを使用
+            edge_tuple = tuple(sorted((q_id1, q_id2)))
+            if edge_tuple in added_edges: continue
+
+            vec1_tensor = embeddings[q_id1]
+            vec2_tensor = embeddings[q_id2]
+            
+            sim = calculate_cosine_similarity(vec1_tensor, vec2_tensor)
+            if sim >= SIMILARITY_THRESHOLD:
+                similarities.append((sim, q_id2))
+        
+        # 類似度が高い順にソートし、上位N個のエッジのみを選択
+        similarities.sort(key=lambda x: x[0], reverse=True)
+        for sim, q_id2 in similarities[:MAX_SIMILAR_EDGES_PER_NODE]:
+            links.append(GraphLink(source=q_id1, target=q_id2, type="similarity_link", directed=False))
+            added_edges.add(tuple(sorted((q_id1, q_id2)))) # 追加したエッジを記録
+
+    logging.info(f"Generated links: {links}")
     return GraphData(nodes=nodes, links=links)
 
 
