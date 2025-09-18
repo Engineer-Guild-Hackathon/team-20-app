@@ -22,6 +22,7 @@ interface GraphNode {
   question_created_at?: string; // NEW FIELD
   summary_created_at?: string; // NEW FIELD
   category?: string; // NEW FIELD: Add category to GraphNode
+  original_summary_id?: number; // NEW FIELD: 質問が紐づく元の要約ID
 }
 
 interface GraphLink {
@@ -160,6 +161,11 @@ const SummaryTreeGraph: React.FC = () => {
         elementsWithDepth.push({
           data: { source: link.source, target: link.target, type: 'parent_summary_link' },
           classes: 'parent_summary_link',
+        });
+      } else if (targetNode?.type === 'user_question' && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
+        elementsWithDepth.push({
+          data: { source: `summary-${targetNode.original_summary_id}`, target: link.target, type: 'summary_question_link' },
+          classes: 'summary_question_link',
         });
       }
     });

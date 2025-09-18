@@ -228,13 +228,8 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
   });
 
   const handleHistoryItemClick = (item: HistoryItem) => {
-    // currentUsername propを使用
-    if (currentUsername && item.username && item.username === currentUsername) {
-      onHistoryClick(item); // メインページに転送
-    } else {
-      setSelectedHistory(item);
-      setOpen(true); // モーダルウィンドウで表示
-    }
+    setSelectedHistory(item);
+    setOpen(true); // モーダルウィンドウで表示
   };
 
   const handleClose = () => {
@@ -750,6 +745,14 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
               </>
             ) : (
               <>
+                {selectedHistory && selectedHistory.username === currentUsername && (
+                  <Button onClick={() => {
+                    onHistoryClick(selectedHistory);
+                    handleClose(); // Close the modal after importing
+                  }} variant="contained" color="primary">
+                    メイン画面に転送
+                  </Button>
+                )}
                 {selectedHistory && selectedHistory.username !== currentUsername && (
                   <Button onClick={() => {
                     onHistoryClick(selectedHistory);

@@ -189,18 +189,12 @@ def get_required_user(authorization: str = Header(...), db: Session = Depends(ge
 
 
 
-class Message(BaseModel):
-    sender: str
-    text: str
-    username: Optional[str] = None
-    timestamp: str
-    category: Optional[str] = None # NEW FIELD: Add category to Message
-
 class ChatRequest(BaseModel):
     message: str
     pdf_summary: Optional[str] = None
     summary_id: Optional[int] = None
     original_file_paths: Optional[List[str]] = None # 追加
+    parent_summary_id: Optional[int] = None # NEW FIELD
 
 class LoginRequest(BaseModel):
     username: str
@@ -257,6 +251,9 @@ class HistoryContentCreateRequest(BaseModel):
     summary_history_id: int
     section_type: str
     content: str # JSON string
+    question_text: Optional[str] = None # NEW FIELD
+    ai_answer_text: Optional[str] = None # NEW FIELD
+    user_provided_summary: Optional[str] = None # NEW FIELD: ユーザーが提供する要約
 
 class HistoryContentResponse(BaseModel):
     id: int
@@ -353,6 +350,7 @@ class GraphNode(BaseModel):
     summary_created_at: Optional[datetime] = None # NEW FIELD
     category: Optional[str] = None # NEW FIELD: Add category to GraphNode
     history_content_id: Optional[int] = None # NEW FIELD: Reference to HistoryContent.id
+    original_summary_id: Optional[int] = None # NEW FIELD: 質問が紐づく元の要約ID
 
 
 class GraphLink(BaseModel):
@@ -1454,6 +1452,69 @@ async def upload_shared_file(
     }
 
 
+@app.post("/api/save-question-summary")
+async def save_question_summary(
+    request: HistoryContentCreateRequest,
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """質問と回答のペアを要約してデータベースに保存するエンドポイント"""
+    try:
+        summary_history = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_history_id).first()
+        if not summary_history:
+            raise HTTPException(status_code=404, detail="指定された要約履歴が見つかりません")
+
+        # 権限チェック
+        is_owner = summary_history.user_id == current_user.id
+        is_team_member = False
+        if summary_history.team_id:
+            membership = db.query(TeamMember).filter(
+                TeamMember.team_id == summary_history.team_id,
+                TeamMember.user_id == current_user.id
+            ).first()
+            if membership:
+                is_team_member = True
+
+        if not is_owner and not is_team_member:
+            raise HTTPException(status_code=403, detail="このコンテンツを保存する権限がありません")
+
+        # 質問と回答のペアを要約 (AI生成)
+        combined_text = f"質問: {request.question_text}\n回答: {request.ai_answer_text}"
+        ai_generated_summary = await summarize_text_with_gemini(combined_text)
+
+        # ユーザーが提供した要約があればそれを使用、なければAI生成の要約を使用
+        final_content = request.user_provided_summary if request.user_provided_summary is not None else ai_generated_summary
+
+        new_history_content = HistoryContent(
+            summary_history_id=request.summary_history_id,
+            section_type='user_question_summary', # 質問単位の要約であることを示す
+            content=final_content, # ユーザー提供またはAI生成の要約を保存
+            question_text=request.question_text,
+            ai_answer_text=request.ai_answer_text,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+        db.add(new_history_content)
+        db.flush()
+
+        # NEW: 質問と回答の要約をAiSummaryResponseに保存 (AI生成の要約を保存)
+        new_ai_summary_response = AiSummaryResponse(
+            summary_history_id=request.summary_history_id,
+            original_history_content_id=new_history_content.id,
+            summarized_content=ai_generated_summary, # AI生成の要約を保存
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(new_ai_summary_response)
+
+        db.commit()
+        db.refresh(new_history_content)
+
+        return {"message": "質問単位の要約が正常に保存されました", "content_id": new_history_content.id}
+
+    except Exception as e:
+        logging.error(f"Error saving question summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"質問単位の要約保存中にエラーが発生しました: {str(e)}")
+
 @app.put("/api/history-contents")
 async def upsert_history_content(
     request: HistoryContentCreateRequest,
@@ -1685,81 +1746,99 @@ async def get_summary_tree_graph(
             parent_node_id = f"summary_{summary.parent_summary_id}"
             links.append(GraphLink(source=parent_node_id, target=summary_node_id))
 
-        # この要約に関連するAIチャット履歴コンテンツを取得
-        ai_chat_contents = db.query(HistoryContent).filter(
-            HistoryContent.summary_history_id == summary.id,
-            HistoryContent.section_type == 'ai_chat'
-        ).order_by(HistoryContent.created_at).all()
-
         # カテゴリごとの質問をグループ化するための辞書
         questions_by_category: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
-        for chat_content in ai_chat_contents:
+        # この要約に関連するユーザー質問要約コンテンツを取得
+        user_question_summaries = db.query(HistoryContent).filter(
+            HistoryContent.summary_history_id == summary.id,
+            HistoryContent.section_type == 'user_question_summary'
+        ).order_by(HistoryContent.created_at).all()
+
+        for uqs_content in user_question_summaries:
+            qa_pair = {
+                "question": uqs_content.question_text or "",
+                "answer": uqs_content.ai_answer_text or "",
+                "timestamp": uqs_content.created_at,
+                "category": "質問要約", # デフォルトカテゴリ
+                "summarized_qa": uqs_content.content, # 質問と回答の要約
+                "history_content_id": uqs_content.id # HistoryContentのID
+            }
+            category = qa_pair.get("category", "未分類")
+            questions_by_category[category].append(qa_pair)
+
+        # 既存のai_chat履歴も処理（もしあれば）
+        ai_chat_content = db.query(HistoryContent).filter(
+            HistoryContent.summary_history_id == summary.id,
+            HistoryContent.section_type == 'ai_chat'
+        ).first()
+
+        if ai_chat_content:
             try:
-                chat_history_data = json.loads(chat_content.content)
-                
+                chat_history_data = json.loads(ai_chat_content.content)
                 if not isinstance(chat_history_data, list):
-                    logging.warning(f"Chat history content for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id} is not a list. Skipping.")
-                    continue
+                    logging.warning(f"Chat history content for SummaryHistory ID {summary.id}, HistoryContent ID {ai_chat_content.id} is not a list. Skipping.")
+                else:
+                    # ai_chat全体の要約を取得
+                    overall_chat_summary = None
+                    ai_summary_response = db.query(AiSummaryResponse).filter(
+                        AiSummaryResponse.original_history_content_id == ai_chat_content.id
+                    ).first()
+                    overall_chat_summary = ai_summary_response.summarized_content if ai_summary_response else None
 
-                # AiSummaryResponse を取得
-                ai_summary_response = db.query(AiSummaryResponse).filter(
-                    AiSummaryResponse.original_history_content_id == chat_content.id
-                ).first()
-                summarized_ai_answer = ai_summary_response.summarized_content if ai_summary_response else None
+                    # チャット履歴を解析し、質問と回答のペアを抽出
+                    questions_with_answers: List[Dict[str, Any]] = []
+                    current_question_data: Optional[Dict[str, Any]] = None
 
-                # チャット履歴を解析し、質問と回答のペアを抽出
-                questions_with_answers: List[Dict[str, Any]] = [] # Store question, answer, category, and timestamp
-                current_question_data: Optional[Dict[str, Any]] = None # To hold {'question': str, 'timestamp': datetime, 'category': str}
+                    for i, message in enumerate(chat_history_data):
+                        message_role = message.get('sender', 'unknown')
+                        message_text = message.get('text', 'No text')
+                        timestamp_str = message.get('timestamp')
+                        message_timestamp = None
+                        if timestamp_str:
+                            try:
+                                message_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                            except ValueError:
+                                logging.warning(f"Invalid timestamp format in chat history: {timestamp_str}")
 
-                for i, message in enumerate(chat_history_data):
-                    message_role = message.get('sender', 'unknown')
-                    message_text = message.get('text', 'No text')
-                    timestamp_str = message.get('timestamp')
-                    message_timestamp = None
-                    if timestamp_str:
-                        try:
-                            message_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                        except ValueError:
-                            logging.warning(f"Invalid timestamp format in chat history: {timestamp_str}")
-
-                    if message_role == "user":
-                        # If there was a previous question without an AI answer, add it now with an empty answer
-                        if current_question_data is not None:
+                        if message_role == "user":
+                            if current_question_data is not None:
+                                questions_with_answers.append({
+                                    "question": current_question_data["question"],
+                                    "answer": "",
+                                    "timestamp": current_question_data["timestamp"],
+                                    "category": current_question_data.get("category")
+                                })
+                            current_question_data = {"question": message_text, "timestamp": message_timestamp, "category": message.get("category")}
+                        elif message_role == "ai" and current_question_data is not None:
                             questions_with_answers.append({
                                 "question": current_question_data["question"],
-                                "answer": "", # No AI answer yet
+                                "answer": message_text,
                                 "timestamp": current_question_data["timestamp"],
                                 "category": current_question_data.get("category")
                             })
-                        current_question_data = {"question": message_text, "timestamp": message_timestamp, "category": message.get("category")}
-                    elif message_role == "ai" and current_question_data is not None:
+                            current_question_data = None
+
+                    if current_question_data is not None:
                         questions_with_answers.append({
                             "question": current_question_data["question"],
-                            "answer": message_text,
+                            "answer": "",
                             "timestamp": current_question_data["timestamp"],
                             "category": current_question_data.get("category")
                         })
-                        current_question_data = None # Reset for the next question
-
-                # After the loop, if there's a pending user question without an AI answer, add it
-                if current_question_data is not None:
-                    questions_with_answers.append({
-                        "question": current_question_data["question"],
-                        "answer": "", # No AI answer yet
-                        "timestamp": current_question_data["timestamp"],
-                        "category": current_question_data.get("category")
-                    })
-                
-                # カテゴリごとに質問をグループ化
-                for qa_pair in questions_with_answers:
-                    category = qa_pair.get("category", "未分類")
-                    questions_by_category[category].append(qa_pair)
+                    
+                    # ai_chatから抽出した質問もカテゴリごとにグループ化
+                    for qa_pair in questions_with_answers:
+                        category = qa_pair.get("category", "未分類")
+                        # ai_chatから抽出した質問には、全体の要約を紐付ける
+                        #qa_pair["summarized_qa"] = overall_chat_summary # 全体の要約を個別の質問に紐付け
+                        #qa_pair["history_content_id"] = ai_chat_content.id # ai_chatのHistoryContent IDを紐付け
+                        questions_by_category[category].append(qa_pair)
 
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to decode chat history JSON for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id}: {e}")
+                logging.error(f"Failed to decode chat history JSON for SummaryHistory ID {summary.id}, HistoryContent ID {ai_chat_content.id}: {e}")
             except Exception as e:
-                logging.error(f"Error processing chat history for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id}: {e}")
+                logging.error(f"Error processing chat history for SummaryHistory ID {summary.id}, HistoryContent ID {ai_chat_content.id}: {e}")
 
         # カテゴリノードと質問ノード、およびリンクを構築
         for category_name, qa_pairs in questions_by_category.items():
@@ -1776,6 +1855,9 @@ async def get_summary_tree_graph(
             for i, qa_pair in enumerate(qa_pairs):
                 question_node_id = f"question_{summary.id}_{category_name}_{i}"
                 
+                # 質問ノードに紐づく要約を決定
+                current_question_node_summary = qa_pair.get("summarized_qa")
+
                 nodes.append(GraphNode(
                     id=question_node_id,
                     label=qa_pair["question"],
@@ -1783,10 +1865,10 @@ async def get_summary_tree_graph(
                     summary_id=summary.id,
                     question_id=question_node_id,
                     ai_answer=qa_pair["answer"],
-                    ai_answer_summary=summarized_ai_answer, # NEW: 要約されたAI回答を追加
+                    ai_answer_summary=current_question_node_summary, # NEW: 要約されたAI回答を追加
                     question_created_at=qa_pair["timestamp"], # NEW FIELD: question_created_at を追加
                     category=qa_pair.get("category"), # NEW FIELD: category を追加
-                    history_content_id=chat_content.id # NEW FIELD: HistoryContent.id を追加
+                    history_content_id=qa_pair.get("history_content_id") # NEW FIELD: HistoryContent.id を追加
                 ))
                 
                 links.append(GraphLink(source=category_node_id, target=question_node_id)) # カテゴリノードから質問ノードへリンク

@@ -111,6 +111,8 @@ class HistoryContent(Base):
     summary_history_id = Column(Integer, ForeignKey("summary_histories.id"), nullable=False)
     section_type = Column(String, nullable=False, index=True)
     content = Column(Text, nullable=False)
+    question_text = Column(Text, nullable=True) # NEW FIELD: ユーザーの質問テキスト
+    ai_answer_text = Column(Text, nullable=True) # NEW FIELD: AIの回答テキスト
     embedding = Column(Text, nullable=True) # NEW FIELD: Store embeddings as JSON string
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

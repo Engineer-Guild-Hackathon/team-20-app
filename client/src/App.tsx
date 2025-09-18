@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from './AuthContext'; // NEW: AuthContextをインポート
 import {
   Typography,
   Container,
@@ -75,6 +76,7 @@ interface SessionState {
 }
 
 function App() {
+  const { authToken } = useAuth(); // NEW: authTokenを取得
   const location = useLocation();
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
@@ -896,6 +898,7 @@ function App() {
                     currentMessages={chatMessages}
                     onMessagesChange={handleMessagesChange}
                     username={username}
+                    authToken={authToken} // NEW: authTokenを渡す
                   />
                 </Box>
                 <Box sx={{ flex: 1, overflow: "hidden" }}>

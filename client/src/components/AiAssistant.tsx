@@ -43,9 +43,10 @@ interface AiAssistantProps {
   onMessagesChange: (messages: Message[]) => void;
   currentPdfFilePaths?: string[];
   username: string | null; // Add username prop
+  authToken?: string | null; // NEW: Add authToken prop (allow null)
 }
 
-const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange, currentPdfFilePaths, username }: AiAssistantProps) => {
+const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange, currentPdfFilePaths, username, authToken }: AiAssistantProps) => {
   const [input, setInput] = useState('');
   const [displayMessages, setDisplayMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,17 +65,24 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
     setLoading(true);
 
     try {
+      const requestBody: any = {
+        message: message,
+        pdf_summary: pdfSummaryContent,
+        summary_id: summaryId,
+        parent_summary_id: summaryId, // Add parent_summary_id
+      };
+
+      // summaryIdが存在しない場合のみoriginal_file_pathsを追加
+      if (summaryId === undefined) {
+        requestBody.original_file_paths = currentPdfFilePaths;
+      }
+
       const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: message,
-          pdf_summary: pdfSummaryContent,
-          summary_id: summaryId,
-          original_file_paths: summaryId === undefined ? currentPdfFilePaths : undefined, // Only send if no summaryId
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -85,6 +93,34 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
       const aiMessage: Message = { sender: 'ai', text: data.reply, timestamp: new Date().toISOString() }; // timestampを追加
       const finalMessages = [...newMessages, aiMessage];
       onMessagesChange(finalMessages); // 親コンポーネントに通知
+
+      // 質問と回答のペアをバックエンドに保存
+      if (summaryId) { // summaryIdがある場合のみ保存
+        const userQuestion = userDisplayMessage.text;
+        const aiAnswer = data.reply;
+        const category = userDisplayMessage.category || 'その他';
+
+        try {
+          await fetch('http://localhost:8000/api/save-question-summary', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${authToken}`, // NEW: Authorization ヘッダーを追加
+            },
+            body: JSON.stringify({
+              summary_history_id: summaryId,
+              section_type: 'user_question_summary',
+              content: '', // 要約はバックエンドで生成されるため空 (ユーザー提供の要約がない場合、バックエンドでAI生成される)
+              question_text: userQuestion,
+              ai_answer_text: aiAnswer,
+              user_provided_summary: null, // NEW FIELD: ユーザーが提供する要約 (現時点ではnull)
+            }),
+          });
+          console.log('質問単位の要約が保存されました');
+        } catch (saveError) {
+          console.error('質問単位の要約保存中にエラーが発生しました:', saveError);
+        }
+      }
 
     } catch (error) {
       console.error('Error fetching AI response:', error);
