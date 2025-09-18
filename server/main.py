@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
-from database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message
+from database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message, AiSummaryResponse
 from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -334,6 +334,7 @@ class GraphNode(BaseModel):
     summary_id: Optional[int] = None # For chat messages, links back to the summary
     question_id: Optional[str] = None # For user question nodes, unique ID within the chat
     ai_answer: Optional[str] = None # For user question nodes, stores the AI's answer
+    ai_answer_summary: Optional[str] = None # NEW FIELD: Stores the summarized AI answer
     parent_summary_id: Optional[int] = None # NEW FIELD
     question_created_at: Optional[datetime] = None # NEW FIELD
     summary_created_at: Optional[datetime] = None # NEW FIELD
@@ -703,6 +704,24 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         logging.error(f"Error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI応答エラー: {str(e)}")
 
+async def summarize_text_with_gemini(text: str) -> str:
+    """Gemini APIを使用してテキストを要約する"""
+    client = genai.Client(api_key=API_KEY)
+    try:
+        prompt = f"以下のテキストを簡潔に要約してください。要点のみを抽出し、箇条書きで3点程度にまとめてください。\n\nテキスト:\n{text}"
+        response = await client.aio.models.generate_content(
+            model='gemini-2.0-flash-001',
+            contents=prompt
+        )
+        if hasattr(response, 'text') and response.text:
+            return response.text
+        elif hasattr(response, 'candidates') and response.candidates:
+            return response.candidates[0].content.parts[0].text
+        else:
+            return "要約の生成に失敗しました"
+    except Exception as e:
+        logging.error(f"Error summarizing text with Gemini API: {str(e)}")
+        return "要約の生成中にエラーが発生しました"
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(
@@ -1116,6 +1135,21 @@ async def save_summary(
                     db.add(new_chat_history_content)
                     db.flush()
                     new_history.chat_history_id = new_chat_history_content.id
+
+                    # NEW: AI Assistantの回答を抽出し、要約してAiSummaryResponseに保存
+                    ai_responses = [msg["text"] for msg in chat_content_data if msg.get("sender") == "ai"]
+                    if ai_responses:
+                        combined_ai_response = "\n\n".join(ai_responses)
+                        summarized_ai_response = await summarize_text_with_gemini(combined_ai_response) # 新しい関数を呼び出す
+
+                        new_ai_summary_response = AiSummaryResponse(
+                            summary_history_id=new_history.id,
+                            original_history_content_id=new_chat_history_content.id,
+                            summarized_content=summarized_ai_response,
+                            created_at=datetime.now(timezone.utc)
+                        )
+                        db.add(new_ai_summary_response)
+
                 except json.JSONDecodeError as e:
                     logging.error(f"Failed to decode ai_chat_history JSON for team summary: {e}")
                 except Exception as e:
@@ -1141,7 +1175,7 @@ async def save_summary(
 
             # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
             if request.ai_chat_history:
-                logging.info(f"[save_summary] Received ai_chat_history (team): {request.ai_chat_history[:500]}...") # Log first 500 chars
+                logging.info(f"[save_summary] Received ai_chat_history (personal): {request.ai_chat_history[:500]}...") # Log first 500 chars
                 try:
                     chat_content_data = json.loads(request.ai_chat_history)
                     # 各チャットメッセージにタイムスタンプを追加
@@ -1159,6 +1193,21 @@ async def save_summary(
                     db.add(new_chat_history_content)
                     db.flush()
                     new_history.chat_history_id = new_chat_history_content.id
+
+                    # NEW: AI Assistantの回答を抽出し、要約してAiSummaryResponseに保存
+                    ai_responses = [msg["text"] for msg in chat_content_data if msg.get("sender") == "ai"]
+                    if ai_responses:
+                        combined_ai_response = "\n\n".join(ai_responses)
+                        summarized_ai_response = await summarize_text_with_gemini(combined_ai_response) # 新しい関数を呼び出す
+
+                        new_ai_summary_response = AiSummaryResponse(
+                            summary_history_id=new_history.id,
+                            original_history_content_id=new_chat_history_content.id,
+                            summarized_content=summarized_ai_response,
+                            created_at=datetime.now(timezone.utc)
+                        )
+                        db.add(new_ai_summary_response)
+
                 except json.JSONDecodeError as e:
                     logging.error(f"Failed to decode ai_chat_history JSON for user {current_user.id}: {e}")
                 except Exception as e:
@@ -1554,6 +1603,12 @@ async def get_summary_tree_graph(
                     logging.warning(f"Chat history content for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id} is not a list. Skipping.")
                     continue
 
+                # AiSummaryResponse を取得
+                ai_summary_response = db.query(AiSummaryResponse).filter(
+                    AiSummaryResponse.original_history_content_id == chat_content.id
+                ).first()
+                summarized_ai_answer = ai_summary_response.summarized_content if ai_summary_response else None
+
                 previous_node_id = summary_node_id
                 
                 # チャット履歴を解析し、質問と回答のペアを抽出
@@ -1607,6 +1662,7 @@ async def get_summary_tree_graph(
                         summary_id=summary.id,
                         question_id=question_node_id,
                         ai_answer=qa_pair["answer"],
+                        ai_answer_summary=summarized_ai_answer, # NEW: 要約されたAI回答を追加
                         question_created_at=qa_pair["timestamp"], # NEW FIELD: question_created_at を追加
                     ))
                     

@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, CircularProgress, Typography, Paper } from '@mui/material';
+import { Box, CircularProgress, Typography, Paper, Button } from '@mui/material';
 import { useAuth } from '../AuthContext';
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import ReactMarkdown from 'react-markdown';
 
 cytoscape.use(dagre);
 
@@ -14,6 +15,7 @@ interface GraphNode {
   summary_id?: number;
   question_id?: string; // 質問ノード用
   ai_answer?: string; // 質問ノード用
+  ai_answer_summary?: string; // NEW FIELD: 要約されたAI回答
   parent_summary_id?: number; // NEW FIELD
   question_created_at?: string; // NEW FIELD
   summary_created_at?: string; // NEW FIELD
@@ -35,6 +37,7 @@ const SummaryTreeGraph: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [isSummarized, setIsSummarized] = useState<boolean>(true); // NEW: 要約表示/元の回答表示を切り替えるstate
 
   const fetchGraphData = useCallback(async () => {
     setLoading(true);
@@ -327,7 +330,25 @@ const SummaryTreeGraph: React.FC = () => {
           {selectedNode.ai_answer && (
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle2">AIの回答:</Typography>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{selectedNode.ai_answer}</Typography>
+              {selectedNode.ai_answer_summary ? (
+                <>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setIsSummarized(!isSummarized)}
+                    sx={{ mb: 1 }}
+                  >
+                    {isSummarized ? '元の回答を表示' : '要約を表示'}
+                  </Button>
+                  <ReactMarkdown>
+                    {isSummarized ? selectedNode.ai_answer_summary : selectedNode.ai_answer}
+                  </ReactMarkdown>
+                </>
+              ) : (
+                <ReactMarkdown>
+                  {selectedNode.ai_answer}
+                </ReactMarkdown>
+              )}
             </Box>
           )}
         </Paper>

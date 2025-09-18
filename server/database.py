@@ -101,6 +101,7 @@ class SummaryHistory(Base):
     team = relationship("Team", back_populates="summaries")
     comments = relationship("Comment", back_populates="summary", cascade="all, delete-orphan")
     contents = relationship("HistoryContent", back_populates="summary_history", cascade="all, delete-orphan")
+    ai_summary_responses = relationship("AiSummaryResponse", back_populates="summary_history", cascade="all, delete-orphan") # NEW
     parent = relationship("SummaryHistory", remote_side=[id]) # NEW RELATIONSHIP
 
 class HistoryContent(Base):
@@ -114,6 +115,19 @@ class HistoryContent(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     summary_history = relationship("SummaryHistory", back_populates="contents")
+    ai_summary_responses = relationship("AiSummaryResponse", back_populates="original_history_content", cascade="all, delete-orphan") # NEW
+
+class AiSummaryResponse(Base): # NEW TABLE
+    __tablename__ = "ai_summary_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    summary_history_id = Column(Integer, ForeignKey("summary_histories.id"), nullable=False)
+    original_history_content_id = Column(Integer, ForeignKey("history_contents.id"), nullable=False) # どのHistoryContentから生成されたか
+    summarized_content = Column(Text, nullable=False) # 短くまとめたAIの回答
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    summary_history = relationship("SummaryHistory", back_populates="ai_summary_responses")
+    original_history_content = relationship("HistoryContent", back_populates="ai_summary_responses")
 
 class SharedFile(Base):
     __tablename__ = "shared_files"
