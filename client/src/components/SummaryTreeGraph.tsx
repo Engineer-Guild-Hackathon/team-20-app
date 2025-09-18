@@ -158,25 +158,15 @@ const SummaryTreeGraph: React.FC = () => {
   }, [graphData]);
 
   const layout = {
-    name: 'concentric', // Concentric layout for circular expansion
-    concentric: function(node: any){ // get the distance from the center for concentric layout
-      return node.data('depth'); // Use calculated depth
-    },
-    levelWidth: function(nodes: any){ // how much separation between levels
-      return 60; // Adjust as needed, reduced from 100
-    },
-    minNodeSpacing: 30, // Reduced from 50
-    equidistant: true, // Whether levels are equidistant or not
-    startAngle: 3 / 2 * Math.PI, // where nodes start in the circle
-    sweep: undefined, // how many radians should be covered by the nodes in a full circle (undefined means full circle)
-    clockwise: true, // whether the layout should go clockwise (true) or counterclockwise (false)
-    avoidOverlap: true, // prevents node overlap, may overflow boundingBox if not enough space
-    nodeDimensionsIncludeLabels: true, // whether labels should be included in node dimensions for overlap calculation
-    padding: 20, // the padding on the sides of the layout, reduced from 30
-    animate: false, // whether to transition the layout
-    animationDuration: 500, // duration of animation in ms if enabled
-    fit: true, // whether to fit the viewport to the graph
-    spacingFactor: 1.0, // increase the distance between nodes, reduced from 1.5
+    name: 'dagre', // dagreレイアウトに変更
+    rankDir: 'LR', // 左から右へ (Left to Right)
+    rankSep: 80, // ランク間の距離を調整
+    nodeSep: 30, // ノード間の距離を調整
+    edgeSep: 10, // エッジ間の距離を調整
+    fit: true, // ビューポートにフィット
+    padding: 20, // パディング
+    animate: false, // アニメーションを無効化
+    nodeDimensionsIncludeLabels: true, // ラベルをノードの寸法に含める
   };
 
   const style = [
