@@ -20,7 +20,9 @@ import {
   DialogActions, // Added
   DialogContent, // Added
   DialogContentText, // Added
-  DialogTitle // Added
+  DialogTitle, // Added
+  Backdrop, // Added
+  CircularProgress // Added
 } from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -919,6 +921,13 @@ function App() {
           {snackbarMessage}
         </Alert>
       </Snackbar>
+
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        open={isSaving}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
 
       <Dialog
         open={isClearConfirmOpen}

@@ -78,15 +78,43 @@ const SummaryTreeGraph: React.FC = () => {
   useEffect(() => {
     if (!graphData) return;
 
-    console.log("--- Debugging SummaryTreeGraph --- ");
-    console.log("Initial graphData:", graphData);
-
     const elementsWithDepth: any[] = [];
     const depthMap = new Map<string, number>();
+    const childToRootSummaryMap = new Map<string, string>(); // Maps child summary ID to root summary ID
 
-    // Initialize summary nodes with depth 0
+    // Build the childToRootSummaryMap
     graphData.nodes.forEach(node => {
-      if (node.type === 'summary') {
+      if (node.type === 'summary' && node.parent_summary_id) {
+        let currentSummaryId = node.id;
+        let parentId = `summary_${node.parent_summary_id}`;
+        let rootId = parentId; // Assume parent is root initially
+
+        // Traverse up the parent chain to find the ultimate root
+        let visited = new Set<string>(); // To prevent infinite loops in case of circular parent_summary_id references
+        while (parentId && graphData.nodes.some(n => n.id === parentId && n.type === 'summary')) {
+          if (visited.has(parentId)) {
+            console.warn(`Circular parent_summary_id reference detected for ${node.id}`);
+            break;
+          }
+          visited.add(parentId);
+
+          const parentNode = graphData.nodes.find(n => n.id === parentId && n.type === 'summary');
+          if (!parentNode) break; // Should not happen if some() check passed
+
+          if (!parentNode.parent_summary_id) { // Found a root parent
+            rootId = parentId;
+            break;
+          } else {
+            parentId = `summary_${parentNode.parent_summary_id}`;
+          }
+        }
+        childToRootSummaryMap.set(currentSummaryId, rootId);
+      }
+    });
+
+    // Initialize summary nodes with depth 0 (only root summaries)
+    graphData.nodes.forEach(node => {
+      if (node.type === 'summary' && !node.parent_summary_id) { // Only add root summaries
         depthMap.set(node.id, 0);
         elementsWithDepth.push({
           data: { ...node, depth: 0 },
@@ -94,31 +122,6 @@ const SummaryTreeGraph: React.FC = () => {
         });
       }
     });
-
-    // Build adjacency list for easy traversal
-    const adj: { [key: string]: string[] } = {};
-    graphData.links.forEach(link => {
-      if (!adj[link.source]) adj[link.source] = [];
-      adj[link.source].push(link.target);
-    });
-
-    // Perform BFS to calculate depth for category and question nodes
-    const queue: string[] = graphData.nodes.filter(n => n.type === 'summary').map(n => n.id);
-    let head = 0;
-
-    while(head < queue.length) {
-      const currentId = queue[head++];
-      const currentDepth = depthMap.get(currentId)!;
-
-      if (adj[currentId]) {
-        adj[currentId].forEach(neighborId => {
-          if (!depthMap.has(neighborId)) {
-            depthMap.set(neighborId, currentDepth + 1);
-            queue.push(neighborId);
-          }
-        });
-      }
-    }
 
     // Add category and question nodes with calculated depth
     graphData.nodes.forEach(node => {
@@ -143,8 +146,9 @@ const SummaryTreeGraph: React.FC = () => {
       const targetNode = graphData.nodes.find(n => n.id === link.target);
 
       if (sourceNode?.type === 'summary' && targetNode?.type === 'category') {
+        const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
         elementsWithDepth.push({
-          data: { source: link.source, target: link.target, type: 'summary_category_link' },
+          data: { source: effectiveSourceId, target: link.target, type: 'summary_category_link' },
           classes: 'summary_category_link',
         });
       } else if (sourceNode?.type === 'category' && targetNode?.type === 'user_question') {
@@ -153,18 +157,25 @@ const SummaryTreeGraph: React.FC = () => {
           classes: 'category_question_link',
         });
       } else if (link.type === 'similarity_link') { // NEW: 類似度リンクを追加
+        const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
+        const effectiveTargetId = childToRootSummaryMap.get(link.target) || link.target;
         elementsWithDepth.push({
-          data: { source: link.source, target: link.target, type: 'similarity_link' },
+          data: { source: effectiveSourceId, target: effectiveTargetId, type: 'similarity_link' },
           classes: 'similarity_link',
         });
       } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
-        elementsWithDepth.push({
-          data: { source: link.source, target: link.target, type: 'parent_summary_link' },
-          classes: 'parent_summary_link',
-        });
+        // Only create parent_summary_link if both the sourceNode and targetNode are root summaries
+        if (!sourceNode.parent_summary_id && !targetNode.parent_summary_id) {
+          elementsWithDepth.push({
+            data: { source: link.source, target: link.target, type: 'parent_summary_link' },
+            classes: 'parent_summary_link',
+          });
+        }
       } else if (targetNode?.type === 'user_question' && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
+        const originalSummaryId = `summary_${targetNode.original_summary_id}`;
+        const effectiveSourceId = childToRootSummaryMap.get(originalSummaryId) || originalSummaryId;
         elementsWithDepth.push({
-          data: { source: `summary-${targetNode.original_summary_id}`, target: link.target, type: 'summary_question_link' },
+          data: { source: effectiveSourceId, target: link.target, type: 'summary_question_link' },
           classes: 'summary_question_link',
         });
       }
@@ -433,6 +444,17 @@ const SummaryTreeGraph: React.FC = () => {
                   .map((questionNode, index) => (
                     <ListItem key={index}>
                       <Typography variant="body2">- {questionNode.label}</Typography>
+                    </ListItem>
+                  ))}
+              </List>
+              {/* NEW: Display child summaries */}
+              <Typography variant="subtitle2" sx={{ mt: 2 }}>子要約:</Typography>
+              <List dense>
+                {graphData.nodes
+                  .filter(node => node.type === 'summary' && node.parent_summary_id === selectedNode.summary_id)
+                  .map((childSummaryNode, index) => (
+                    <ListItem key={index}>
+                      <Typography variant="body2">- {childSummaryNode.label} (ID: {childSummaryNode.summary_id})</Typography>
                     </ListItem>
                   ))}
               </List>
