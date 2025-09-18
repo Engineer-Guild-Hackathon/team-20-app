@@ -25,7 +25,9 @@
     "react-scripts": "5.0.1",
     "react-simple-code-editor": "^0.13.1",
     "typescript": "^4.9.5",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "react-cytoscapejs": "^2.0.0",
+    "cytoscape-dagre": "^2.5.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -52,6 +54,9 @@
     ]
   },
   "devDependencies": {
-    "@types/prismjs": "^1.26.5"
+    "@types/prismjs": "^1.26.5",
+    "@types/cytoscape": "*",
+    "@types/react-cytoscapejs": "*",
+    "@types/cytoscape-dagre": "*"
   }
 }

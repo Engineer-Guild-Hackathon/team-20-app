@@ -5,6 +5,8 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
 import { createTheme, ThemeProvider, CssBaseline } from '@mui/material'; // 追加
+import { AuthProvider } from './AuthContext'; // 追加
+
 
 const darkCyberTheme = createTheme({
   palette: {
@@ -135,11 +137,14 @@ root.render(
     <BrowserRouter>
       <ThemeProvider theme={darkCyberTheme}> {/* 追加 */}
         <CssBaseline /> {/* 追加: MUIのベースラインCSSを適用 */}
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>
 );
+
 
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))

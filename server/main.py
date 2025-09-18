@@ -16,11 +16,12 @@ from database import Base, engine, SessionLocal, User, UserSession, SummaryHisto
 from sqlalchemy import inspect, text
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import uuid
 from fastapi.responses import FileResponse
 import re # 追加
 from starlette.concurrency import run_in_threadpool
+from collections import defaultdict
 
 # ファイル保存ディレクトリの設定
 UPLOAD_DIRECTORY = "./shared_files"
@@ -199,8 +200,6 @@ class RegisterRequest(BaseModel):
 class SessionDataRequest(BaseModel):
     session_data: str
 
-
-
 class SaveSummaryRequest(BaseModel):
     filename: str
     summary: str
@@ -208,6 +207,7 @@ class SaveSummaryRequest(BaseModel):
     tags: Optional[List[str]] = None # 追加
     original_file_path: Optional[List[str]] = None # PDFファイルパス
     ai_chat_history: Optional[str] = None # 追加: AI Assistantのチャット履歴 (JSON文字列)
+    parent_summary_id: Optional[int] = None # NEW FIELD
 
 class TagsUpdateRequest(BaseModel):
     tags: List[str]
@@ -270,6 +270,7 @@ class SummaryListItemResponse(BaseModel):
     tags: List[str] = []
     chat_history_id: Optional[int] = None  # チャット履歴IDを追加
     original_file_path: Optional[List[str]] = None # 追加
+    parent_summary_id: Optional[int] = None # NEW FIELD
 
     class Config:
         from_attributes = True
@@ -286,6 +287,7 @@ class SummaryHistoryDetailResponse(BaseModel):
     created_at: datetime
     contents: Optional[List[HistoryContentResponse]] = None # 変更
     original_file_path: Optional[List[str]] = None # 追加
+    parent_summary_id: Optional[int] = None # NEW FIELD
 
     class Config:
         from_attributes = True
@@ -324,6 +326,26 @@ class MessageResponse(BaseModel):
         json_encoders = {
             datetime: lambda dt: dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    type: str # 'summary', 'user_question'
+    summary_id: Optional[int] = None # For chat messages, links back to the summary
+    question_id: Optional[str] = None # For user question nodes, unique ID within the chat
+    ai_answer: Optional[str] = None # For user question nodes, stores the AI's answer
+    parent_summary_id: Optional[int] = None # NEW FIELD
+    question_created_at: Optional[datetime] = None # NEW FIELD
+    summary_created_at: Optional[datetime] = None # NEW FIELD
+
+
+class GraphLink(BaseModel):
+    source: str
+    target: str
+
+class GraphData(BaseModel):
+    nodes: List[GraphNode]
+    links: List[GraphLink]
 
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -803,7 +825,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                     json.loads(summary.original_file_path)
                     if summary.original_file_path and summary.original_file_path.startswith('[')
                     else ([summary.original_file_path] if summary.original_file_path else None)
-                )
+                ),
+                parent_summary_id=summary.parent_summary_id # NEW FIELD
             ))
 
         # ユーザーが所属するチームのIDを取得
@@ -841,7 +864,8 @@ async def get_summaries(current_user: User = Depends(get_required_user), db: Ses
                         json.loads(summary.original_file_path)
                         if summary.original_file_path and summary.original_file_path.startswith('[')
                         else ([summary.original_file_path] if summary.original_file_path else None)
-                    )
+                    ),
+                    parent_summary_id=summary.parent_summary_id # NEW FIELD
                 ))
 
         # 両方のリストを結合して返す
@@ -1063,9 +1087,10 @@ async def save_summary(
                 filename=request.filename,
                 summary=request.summary,
                 team_id=request.team_id, # リクエストで指定されたteam_idを使用
-                tags=",".join(request.tags) if request.tags else None,
+                                tags=",".join(request.tags) if request.tags else None,
                 original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(timezone.utc),
+                parent_summary_id=request.parent_summary_id # NEW FIELD
             )
             db.add(new_history)
             db.flush() # IDを取得するためにflush
@@ -1073,8 +1098,14 @@ async def save_summary(
 
             # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
             if request.ai_chat_history:
+                logging.info(f"[save_summary] Received ai_chat_history (team): {request.ai_chat_history[:500]}...") # Log first 500 chars
                 try:
                     chat_content_data = json.loads(request.ai_chat_history)
+                    # 各チャットメッセージにタイムスタンプを追加
+                    for message in chat_content_data:
+                        if "timestamp" not in message:
+                            message["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    
                     new_chat_history_content = HistoryContent(
                         summary_history_id=new_history.id,
                         section_type='ai_chat',
@@ -1101,7 +1132,8 @@ async def save_summary(
                 team_id=None, # 個人要約なのでteam_idはNone
                 tags=",".join(request.tags) if request.tags else None,
                 original_file_path=json.dumps(request.original_file_path) if request.original_file_path else None,
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(timezone.utc),
+                parent_summary_id=request.parent_summary_id # NEW FIELD
             )
             db.add(new_history)
             db.flush()
@@ -1109,8 +1141,14 @@ async def save_summary(
 
             # AI Assistantのチャット履歴をHistoryContentとして保存し、IDを参照する
             if request.ai_chat_history:
+                logging.info(f"[save_summary] Received ai_chat_history (team): {request.ai_chat_history[:500]}...") # Log first 500 chars
                 try:
                     chat_content_data = json.loads(request.ai_chat_history)
+                    # 各チャットメッセージにタイムスタンプを追加
+                    for message in chat_content_data:
+                        if "timestamp" not in message:
+                            message["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    
                     new_chat_history_content = HistoryContent(
                         summary_history_id=new_history.id,
                         section_type='ai_chat',
@@ -1461,6 +1499,127 @@ async def get_messages(
     return messages_data
 
 
+@app.get("/api/summary-tree-graph", response_model=GraphData)
+async def get_summary_tree_graph(
+    current_user: User = Depends(get_required_user),
+    db: Session = Depends(get_db)
+):
+    """
+    ユーザーの要約履歴とそれに関連するAIチャット履歴をツリーグラフ形式で取得するエンドポイント。
+    """
+    nodes: List[GraphNode] = []
+    links: List[GraphLink] = []
+    
+    # ユーザー自身の要約履歴を取得
+    summaries = db.query(SummaryHistory).filter(
+        SummaryHistory.user_id == current_user.id
+    ).order_by(SummaryHistory.created_at.desc()).all()
+
+    for summary in summaries:
+        summary_node_id = f"summary_{summary.id}"
+        logging.info(f"[Graph] Processing summary {summary.id}. created_at: {summary.created_at}")
+        # created_at を明示的にUTCに変換
+        if summary.created_at.tzinfo is None:
+            created_at_utc = summary.created_at.replace(tzinfo=timezone.utc)
+        else:
+            created_at_utc = summary.created_at.astimezone(timezone.utc)
+
+        nodes.append(GraphNode(
+            id=summary_node_id,
+            label=summary.filename,
+            type="summary",
+            summary_id=summary.id,
+            parent_summary_id=summary.parent_summary_id,
+            summary_created_at=created_at_utc# NEW FIELD: summary_created_at を追加
+        ))
+        logging.info(nodes)
+
+        # 親要約へのリンクを追加
+        if summary.parent_summary_id:
+            parent_node_id = f"summary_{summary.parent_summary_id}"
+            links.append(GraphLink(source=parent_node_id, target=summary_node_id))
+
+        # この要約に関連するAIチャット履歴コンテンツを取得
+        ai_chat_contents = db.query(HistoryContent).filter(
+            HistoryContent.summary_history_id == summary.id,
+            HistoryContent.section_type == 'ai_chat'
+        ).order_by(HistoryContent.created_at).all()
+
+        for chat_content in ai_chat_contents:
+            try:
+                chat_history_data = json.loads(chat_content.content)
+                logging.info(f"[get_summary_tree_graph] Processing chat_history_data for summary {summary.id}: {chat_history_data}")
+                
+                if not isinstance(chat_history_data, list):
+                    logging.warning(f"Chat history content for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id} is not a list. Skipping.")
+                    continue
+
+                previous_node_id = summary_node_id
+                
+                # チャット履歴を解析し、質問と回答のペアを抽出
+                questions_with_answers: List[Dict[str, Any]] = [] # Store question, answer, and timestamp
+                current_question_data: Optional[Dict[str, Any]] = None # To hold {'question': str, 'timestamp': datetime}
+
+                for i, message in enumerate(chat_history_data):
+                    message_role = message.get('sender', 'unknown')
+                    message_text = message.get('text', 'No text')
+                    timestamp_str = message.get('timestamp')
+                    message_timestamp = None
+                    if timestamp_str:
+                        try:
+                            message_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        except ValueError:
+                            logging.warning(f"Invalid timestamp format in chat history: {timestamp_str}")
+
+                    if message_role == "user":
+                        # If there was a previous question without an AI answer, add it now with an empty answer
+                        if current_question_data is not None:
+                            questions_with_answers.append({
+                                "question": current_question_data["question"],
+                                "answer": "", # No AI answer yet
+                                "timestamp": current_question_data["timestamp"]
+                            })
+                        current_question_data = {"question": message_text, "timestamp": message_timestamp}
+                    elif message_role == "ai" and current_question_data is not None:
+                        questions_with_answers.append({
+                            "question": current_question_data["question"],
+                            "answer": message_text,
+                            "timestamp": current_question_data["timestamp"]
+                        })
+                        current_question_data = None # Reset for the next question
+
+                # After the loop, if there's a pending user question without an AI answer, add it
+                if current_question_data is not None:
+                    questions_with_answers.append({
+                        "question": current_question_data["question"],
+                        "answer": "", # No AI answer yet
+                        "timestamp": current_question_data["timestamp"]
+                    })
+
+                # 質問ノードとエッジを構築
+                for i, qa_pair in enumerate(questions_with_answers):
+                    question_node_id = f"question_{chat_content.id}_{i}"
+                    
+                    nodes.append(GraphNode(
+                        id=question_node_id,
+                        label=qa_pair["question"],
+                        type="user_question",
+                        summary_id=summary.id,
+                        question_id=question_node_id,
+                        ai_answer=qa_pair["answer"],
+                        question_created_at=qa_pair["timestamp"], # NEW FIELD: question_created_at を追加
+                    ))
+                    
+                    links.append(GraphLink(source=summary_node_id, target=question_node_id)) # 常に要約ノードからリンク
+
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to decode chat history JSON for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id}: {e}")
+            except Exception as e:
+                logging.error(f"Error processing chat history for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id}: {e}")
+
+    return GraphData(nodes=nodes, links=links)
+
+
 @app.get("/api/summaries/{summary_id}", response_model=SummaryHistoryDetailResponse)
 async def get_summary_detail(
     summary_id: int,
@@ -1503,8 +1662,9 @@ async def get_summary_detail(
         filename=summary_history.filename,
         summary=summary_history.summary,
         created_at=summary_history.created_at.astimezone(timezone.utc) if summary_history.created_at.tzinfo is None else summary_history.created_at,
-        contents=summary_history.contents,
-        original_file_path=deserialized_file_path
+                contents=summary_history.contents,
+        original_file_path=deserialized_file_path,
+        parent_summary_id=summary_history.parent_summary_id # NEW FIELD
     )
 
 @app.put("/api/summaries/{summary_id}/tags")

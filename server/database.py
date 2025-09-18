@@ -95,11 +95,13 @@ class SummaryHistory(Base):
     original_file_path = Column(String, nullable=True)  # PDFファイルの保存パス
     chat_history_id = Column(Integer, nullable=True)  # AI チャット履歴への参照（外部キー制約なし）
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    parent_summary_id = Column(Integer, ForeignKey("summary_histories.id"), nullable=True) # NEW FIELD
 
     user = relationship("User", back_populates="summaries")
     team = relationship("Team", back_populates="summaries")
     comments = relationship("Comment", back_populates="summary", cascade="all, delete-orphan")
     contents = relationship("HistoryContent", back_populates="summary_history", cascade="all, delete-orphan")
+    parent = relationship("SummaryHistory", remote_side=[id]) # NEW RELATIONSHIP
 
 class HistoryContent(Base):
     __tablename__ = "history_contents"

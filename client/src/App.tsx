@@ -32,6 +32,8 @@ import LoginModal from './components/LoginModal';
 import RegisterModal from './components/RegisterModal';
 import MyPage from './components/MyPage';
 import TeamManagement from './components/TeamManagement';
+import SummaryTreeGraph from './components/SummaryTreeGraph'; // 新しく追加
+
 
 // 型定義
 interface HistoryItem {
@@ -77,6 +79,7 @@ function App() {
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
   const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
+  const [currentLoadedSummaryId, setCurrentLoadedSummaryId] = useState<number | undefined>(undefined); // NEW STATE
   const [pdfTags, setPdfTags] = useState<string[]>([]);
   const [pdfFilePath, setPdfFilePath] = useState<string[]>([]);
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
@@ -497,6 +500,7 @@ function App() {
       setPdfSummary(data.summary);
       setPdfFilename(data.filename);
       setPdfSummaryId(data.id);
+      setCurrentLoadedSummaryId(data.id); // NEW: Set the ID of the loaded summary as the potential parent
       setPdfTags(item.tags || []); // 履歴アイテムのタグを引き継ぐ
       setPdfFilePath(data.original_file_path || []); // ファイルパスも設定
 
@@ -640,6 +644,7 @@ function App() {
             tags: tags,
             original_file_path: pdfFilePath,
             ai_chat_history: chatMessages.length > 0 ? JSON.stringify(chatMessages) : undefined, // チャット履歴を追加
+            parent_summary_id: currentLoadedSummaryId && pdfSummaryId ? currentLoadedSummaryId : undefined, // NEW: 親要約IDを渡す
           }),
       });
 
@@ -829,6 +834,7 @@ function App() {
                   [
                     <MenuItem key="mypage" component={Link} to="/mypage" onClick={handleCloseMenu}>マイページ</MenuItem>,
                     <MenuItem key="team-management" component={Link} to="/teams" onClick={handleCloseMenu}>チーム管理</MenuItem>,
+                    <MenuItem key="tree-graph" component={Link} to="/tree-graph" onClick={handleCloseMenu}>ツリーグラフ</MenuItem>,
                     <MenuItem key="logout" onClick={handleLogout}>ログアウト</MenuItem>
                   ]
                 ) : (
@@ -888,6 +894,7 @@ function App() {
           } />
           <Route path="/mypage" element={<MyPage histories={summaryHistories} onHistoryClick={handleHistoryClick} onUpdateHistory={handleUpdateHistoryItem} fetchHistories={fetchHistories} currentUsername={username} />} />
           <Route path="/teams" element={<TeamManagement showSnackbar={showSnackbar} onSummaryGeneratedFromTeamUpload={handleSummaryGeneratedFromTeamUpload} />} />
+          <Route path="/tree-graph" element={<SummaryTreeGraph />} />
         </Routes>
       </Box>
       <LoginModal open={isLoginModalOpen} onClose={handleCloseLoginModal} showSnackbar={showSnackbar} />

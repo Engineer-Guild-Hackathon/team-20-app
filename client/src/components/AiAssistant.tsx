@@ -21,6 +21,7 @@ export interface Message {
   sender: 'user' | 'ai';
   text: string;
   username?: string; // Add username property
+  timestamp: string; // NEW FIELD: Add timestamp
 }
 
 export interface HistoryContent {
@@ -55,7 +56,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
     if (!message.trim()) return;
 
     // チャット画面に表示するメッセージ
-    const userDisplayMessage: Message = { sender: 'user', text: displayMessage || message, username: username || undefined };
+    const userDisplayMessage: Message = { sender: 'user', text: displayMessage || message, username: username || undefined, timestamp: new Date().toISOString() }; // timestampを追加
     const newMessages = [...currentMessages, userDisplayMessage];
     onMessagesChange(newMessages); // 親コンポーネントに通知
     setInput('');
@@ -80,7 +81,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
       }
 
       const data = await response.json();
-      const aiMessage: Message = { sender: 'ai', text: data.reply };
+      const aiMessage: Message = { sender: 'ai', text: data.reply, timestamp: new Date().toISOString() }; // timestampを追加
       const finalMessages = [...newMessages, aiMessage];
       onMessagesChange(finalMessages); // 親コンポーネントに通知
 
@@ -89,6 +90,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
       const errorMessage: Message = {
         sender: 'ai',
         text: '申し訳ありません。エラーが発生しました。',
+        timestamp: new Date().toISOString(), // timestampを追加
       };
       const errorMessages = [...newMessages, errorMessage];
       onMessagesChange(errorMessages); // 親コンポーネントに通知
