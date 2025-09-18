@@ -22,6 +22,10 @@ from fastapi.responses import FileResponse
 import re # 追加
 from starlette.concurrency import run_in_threadpool
 from collections import defaultdict
+from sentence_transformers import SentenceTransformer, util
+
+# Initialize SentenceTransformer model globally
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # ファイル保存ディレクトリの設定
 UPLOAD_DIRECTORY = "./shared_files"
@@ -351,6 +355,7 @@ class GraphNode(BaseModel):
 class GraphLink(BaseModel):
     source: str
     target: str
+    type: Optional[str] = None
 
 class GraphData(BaseModel):
     nodes: List[GraphNode]
@@ -754,6 +759,8 @@ async def generate_category_with_gemini(question_text: str) -> str:
     except Exception as e:
         logging.error(f"Error generating category with Gemini API: {str(e)}")
         return "その他"
+
+
 
 @app.post("/api/upload-pdf")
 async def upload_pdf(
@@ -1610,7 +1617,6 @@ async def get_summary_tree_graph(
 
     for summary in summaries:
         summary_node_id = f"summary_{summary.id}"
-        logging.info(f"[Graph] Processing summary {summary.id}. created_at: {summary.created_at}")
         # created_at を明示的にUTCに変換
         if summary.created_at.tzinfo is None:
             created_at_utc = summary.created_at.replace(tzinfo=timezone.utc)
@@ -1625,7 +1631,6 @@ async def get_summary_tree_graph(
             parent_summary_id=summary.parent_summary_id,
             summary_created_at=created_at_utc # NEW FIELD: summary_created_at を追加
         ))
-        logging.info(nodes)
 
         # 親要約へのリンクを追加
         if summary.parent_summary_id:
@@ -1644,7 +1649,6 @@ async def get_summary_tree_graph(
         for chat_content in ai_chat_contents:
             try:
                 chat_history_data = json.loads(chat_content.content)
-                logging.info(f"[get_summary_tree_graph] Processing chat_history_data for summary {summary.id}: {chat_history_data}")
                 
                 if not isinstance(chat_history_data, list):
                     logging.warning(f"Chat history content for SummaryHistory ID {summary.id}, HistoryContent ID {chat_content.id} is not a list. Skipping.")
@@ -1737,6 +1741,46 @@ async def get_summary_tree_graph(
                 ))
                 
                 links.append(GraphLink(source=category_node_id, target=question_node_id)) # カテゴリノードから質問ノードへリンク
+
+    # 質問ノード間の類似度に基づいてエッジを追加
+    question_nodes_data = [
+        node for node in nodes if node.type == "user_question"
+    ]
+    
+    # 質問テキストとIDのマップを作成
+    question_texts = {node.id: node.label for node in question_nodes_data}
+    question_ids = list(question_texts.keys())
+
+    # 埋め込みベクトルを生成
+    embeddings = {}
+    for q_id, q_text in question_texts.items():
+        # SentenceTransformerを使用して埋め込みを生成
+        embedding = embedding_model.encode(q_text, convert_to_tensor=True)
+        if embedding is not None:
+            embeddings[q_id] = embedding # テンソルを直接格納
+
+    # コサイン類似度を計算するヘルパー関数
+    def calculate_cosine_similarity(vec1, vec2):
+        # SentenceTransformerのutil.cos_simを使用
+        cosine_scores = util.cos_sim(vec1, vec2)
+        return cosine_scores.item() # スカラー値を取得
+
+    SIMILARITY_THRESHOLD = 0.8 # 類似度の閾値
+
+    # 類似度エッジを追加
+    for i in range(len(question_ids)):
+        for j in range(i + 1, len(question_ids)):
+            q_id1 = question_ids[i]
+            q_id2 = question_ids[j]
+            
+            if q_id1 in embeddings and q_id2 in embeddings:
+                # 埋め込みは既にテンソル形式で保存されている
+                vec1_tensor = embeddings[q_id1]
+                vec2_tensor = embeddings[q_id2]
+                
+                sim = calculate_cosine_similarity(vec1_tensor, vec2_tensor)
+                if sim >= SIMILARITY_THRESHOLD:
+                    links.append(GraphLink(source=q_id1, target=q_id2, type="similarity_link"))
 
     return GraphData(nodes=nodes, links=links)
 

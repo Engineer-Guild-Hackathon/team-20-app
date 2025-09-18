@@ -4,9 +4,11 @@ import { Box, CircularProgress, Typography, Paper, Button, List, ListItem } from
 import { useAuth } from '../AuthContext';
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import fcose from 'cytoscape-fcose';
 import ReactMarkdown from 'react-markdown';
 
 cytoscape.use(dagre);
+cytoscape.use(fcose);
 
 interface GraphNode {
   id: string;
@@ -39,6 +41,7 @@ const SummaryTreeGraph: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [isSummarized, setIsSummarized] = useState<boolean>(true); // NEW: 要約表示/元の回答表示を切り替えるstate
+  const [cy, setCy] = useState<cytoscape.Core | null>(null); // Cytoscape.js インスタンスを保存
 
   const fetchGraphData = useCallback(async () => {
     setLoading(true);
@@ -157,17 +160,37 @@ const SummaryTreeGraph: React.FC = () => {
     setProcessedElements(elementsWithDepth);
   }, [graphData]);
 
-  const layout = {
-    name: 'dagre', // dagreレイアウトに変更
-    rankDir: 'LR', // 左から右へ (Left to Right)
-    rankSep: 80, // ランク間の距離を調整
-    nodeSep: 30, // ノード間の距離を調整
-    edgeSep: 10, // エッジ間の距離を調整
-    fit: true, // ビューポートにフィット
-    padding: 20, // パディング
-    animate: false, // アニメーションを無効化
-    nodeDimensionsIncludeLabels: true, // ラベルをノードの寸法に含める
-  };
+  const layout = React.useMemo(() => ({
+    name: 'fcose',
+    quality: 'proof', // 'draft', 'default', 'proof'
+    animate: false, // whether to enable animation when the layout is running
+    animationDuration: 500, // duration of animation in ms if enabled
+    animationEasing: 'ease-out', // easing of animation if enabled
+    fit: true, // whether to fit the viewport to the graph
+    padding: 50, // the padding on the sides of the graph
+    nodeDimensionsIncludeLabels: true, // whether to include labels in node dimensions
+    tile: true, // whether to enable tiling
+    tilingPaddingVertical: 10, // vertical padding for tiling
+    tilingPaddingHorizontal: 10, // horizontal padding for tiling
+    gravity: 0.5, // gravity force (constant) for all nodes
+    numIter: 2500, // maximum number of iterations to perform
+    idealEdgeLength: 100, // ideal (user-specified) edge length
+    edgeElasticity: 0.45, // elasticity constant for the edge force
+    nestingFactor: 0.1, // nesting factor (multiplier) for the inter-graph force
+    gravityRange: 3.8, // range of the gravity force
+    gravityCompound: 1.0, // gravity force (constant) for compound nodes
+    gravityRoot: 1.0, // gravity force (constant) for the highest level compound nodes
+    initialEnergyOnIncremental: 0.3, // initial energy on incremental layout
+    // for incremental layouts
+    incremental: true, // whether to enable incremental layout
+  }), []);
+
+  useEffect(() => {
+    if (cy && processedElements.length > 0) {
+      cy.nodes().ungrabify(); // ノードをドラッグできないようにする
+      cy.layout(layout).run(); // レイアウトを明示的に再実行
+    }
+  }, [cy, processedElements, layout]);
 
   const style = [
     {
@@ -244,45 +267,14 @@ const SummaryTreeGraph: React.FC = () => {
         'width': 3,
       },
     },
-        {
-          selector: '.category',
-          style: {
-            'background-color': '#FFC107', // カテゴリノードの色
-            'shape': 'round-rectangle', // カテゴリノードの形状
-            'font-size': '12px',
-            'text-max-width': '100px',
-            'width': 'label',
-            'height': 'label',
-            'padding': '8px',
-            'border-color': '#FFA000',
-            'shadow-color': '#FFC107',
-          },
-        },
-        {
-          selector: '.category-技術',
-          style: {
-            'background-color': '#FF5733', // 技術カテゴリの色
-            'border-color': '#C70039',
-          },
-        },    {
-      selector: '.category-ビジネス',
-      style: {
-        'background-color': '#33FF57', // ビジネスカテゴリの色
-        'border-color': '#00C739',
-      },
-    },
     {
-      selector: '.category-研究',
+      selector: '.similarity_link', // NEW: 類似度リンクのスタイル
       style: {
-        'background-color': '#3357FF', // 研究カテゴリの色
-        'border-color': '#0039C7',
-      },
-    },
-    {
-      selector: '.category-その他',
-      style: {
-        'background-color': '#888888', // その他カテゴリの色
-        'border-color': '#555555',
+        'line-color': '#FFD700', // Gold color for similarity links
+        'target-arrow-color': '#FFD700',
+        'line-style': 'dotted', // Dotted line for similarity links
+        'width': 1,
+        'opacity': 0.6,
       },
     },
     {
@@ -346,12 +338,20 @@ const SummaryTreeGraph: React.FC = () => {
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2 }}>
       <Box sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
         <CytoscapeComponent
+          key="graph-component"
           elements={processedElements}
           stylesheet={style}
           layout={layout}
-          cy={(cy) => {
-            cy.on('tap', 'node', handleNodeClick);
-            cy.nodes().ungrabify(); // すべてのノードをドラッグできないようにする
+          cy={(cyInstance) => {
+            if (cyInstance) {
+              cyInstance.on('tap', 'node', handleNodeClick);
+              setCy(cyInstance); // cy インスタンスを state に保存
+            }
+            return () => {
+              if (cyInstance) {
+                cyInstance.destroy();
+              }
+            };
           }}
           style={{ width: '100%', height: '100%' }}
         />
