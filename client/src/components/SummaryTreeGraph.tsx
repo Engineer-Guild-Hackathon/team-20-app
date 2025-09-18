@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, CircularProgress, Typography, Paper, Button } from '@mui/material';
+import { Box, CircularProgress, Typography, Paper, Button, List, ListItem } from '@mui/material';
 import { useAuth } from '../AuthContext';
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
@@ -349,6 +349,20 @@ const SummaryTreeGraph: React.FC = () => {
                   {selectedNode.ai_answer}
                 </ReactMarkdown>
               )}
+            </Box>
+          )}
+          {selectedNode.type === 'summary' && graphData && ( // 要約ノードの場合のみ質問リストを表示
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2">関連する質問:</Typography>
+              <List dense>
+                {graphData.nodes
+                  .filter(node => node.type === 'user_question' && node.summary_id === selectedNode.summary_id)
+                  .map((questionNode, index) => (
+                    <ListItem key={index}>
+                      <Typography variant="body2">- {questionNode.label}</Typography>
+                    </ListItem>
+                  ))}
+              </List>
             </Box>
           )}
         </Paper>
