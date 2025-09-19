@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Paper, Typography, Box, Divider, Chip, Button, MenuItem, TextField, List, ListItem, CircularProgress, Menu, IconButton, Snackbar, Alert } from '@mui/material';
-import { PictureAsPdf, AutoAwesome, Comment as CommentIcon, AddReaction as AddReactionIcon } from '@mui/icons-material';
+import { Summarize, AutoAwesome, Comment as CommentIcon, AddReaction as AddReactionIcon } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
 
 
@@ -218,9 +218,9 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <PictureAsPdf color="error" />
+        <Summarize color="action" />
         <Typography variant="h6" component="h2">
-          PDF Viewer
+          Summary Viewer
         </Typography>
       </Box>
       
@@ -243,147 +243,147 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
       
       <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
       
-      {summary ? (
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <AutoAwesome color="secondary" fontSize="small" />
-            <Typography variant="subtitle1" fontWeight="bold" color="secondary">
-              AI要約
-            </Typography>
-          </Box>
-          
-          <ReactMarkdown>
-            {summary}
-          </ReactMarkdown>
-        </Box>
-      ) : (
-        <Box
-          sx={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'text.secondary'
-          }}
-        >
-          <Typography variant="body1" textAlign="center">
-            PDFファイルをアップロードして<br />
-            AI要約を表示してください
-          </Typography>
-        </Box>
-      )}
-
-      {/* コメントセクション */}
-      {summary && ( // Only show comment section if summary exists
-        <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: "50%", marginTop: 'auto' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flex: '0 0 auto' }}>
-            <CommentIcon color="action" fontSize="small" />
-            <Typography variant="h6" component="h3">
-              コメント
-            </Typography>
-          </Box>
-          <Divider sx={{ mb: 2, borderColor: '#00bcd4', flex: '0 0 auto' }} />
-          {!isLoggedIn ? (
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2, flex: '0 0 auto' }}>
-              コメント機能を利用するにはログインが必要です。
-            </Typography>
-          ) : loadingComments ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', flex: '0 0 auto' }}>
-              <CircularProgress size={20} />
+          {summary ? (
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <AutoAwesome color="secondary" fontSize="small" />
+                <Typography variant="subtitle1" fontWeight="bold" color="secondary">
+                  AI要約
+                </Typography>
+              </Box>
+              
+              <ReactMarkdown>
+                {summary}
+              </ReactMarkdown>
             </Box>
-          ) : comments.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ flex: '0 0 auto' }}>まだコメントはありません。</Typography>
           ) : (
-            <List dense component="ul" sx={{ flex: 1, overflowY: 'auto', maxHeight: '300px', flexDirection: 'column-reverse', justifyContent: 'flex-end' }} ref={commentsEndRef}>
-              {comments.map((comment) => (
-                <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
-                  <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {comment.username} - {new Intl.DateTimeFormat('ja-JP', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      }).format(new Date(comment.created_at + "Z"))}
-                    </Typography>
-                  </Box>
-                  <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>
-                  <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {Object.entries(comment.reaction_counts || {}).map(([type, count]) => (
-                      <Chip
-                        key={type}
-                        label={`${type} ${count}`}
-                        size="small"
-                        onClick={() => handleRemoveReaction(comment.id, type)}
-                        sx={{ cursor: 'pointer' }}
-                      />
-                    ))}
-                    <IconButton
-                      aria-label="add reaction"
-                      size="small"
-                      onClick={(event) => handleClickReactionMenu(event, comment.id)}
-                      sx={{ p: '4px' }}
-                    >
-                      <AddReactionIcon fontSize="small" />
-                    </IconButton>
-                    <Menu
-                      anchorEl={anchorEl}
-                      open={openReactionMenu && currentCommentIdForReaction === comment.id}
-                      onClose={handleCloseReactionMenu}
-                      MenuListProps={{
-                        'aria-labelledby': 'basic-button',
-                        sx: {
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          maxWidth: '200px', // 適宜調整
-                        }
-                      }}
-                    >
-                      {['👍', '❤️', '😂', '🎉', '😊', '😢'].map((emoji) => (
-                        <MenuItem
-                          key={emoji}
-                          onClick={() => {
-                            handleAddReaction(comment.id, emoji);
-                            handleCloseReactionMenu();
-                          }}
-                          sx={{ p: '4px 8px' }} // MenuItemのパディングを調整
-                        >
-                          {emoji}
-                        </MenuItem>
-                      ))}
-                    </Menu>
-                  </Box>
-                </ListItem>
-              ))}
-            </List>
-          )}
-          <Box sx={{ mt: 2, display: 'flex', gap: 1, flex: '0 0 auto' }}>
-            <TextField
-              fullWidth
-              variant="outlined"
-              size="small"
-              label="コメントを追加"
-              value={newCommentContent}
-              onChange={(e) => setNewCommentContent(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleAddComment();
-                }
+            <Box
+              sx={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'text.secondary'
               }}
-              disabled={!isLoggedIn} // Disable if not logged in
-            />
-            <Button
-              variant="contained"
-              onClick={handleAddComment}
-              disabled={!isLoggedIn} // Disable if not logged in
             >
-              送信
-            </Button>
-          </Box>
-        </Box>
-      )} {/* Closing the conditional rendering for summary */} 
+              <Typography variant="body1" textAlign="center">
+                PDFファイルをアップロードして<br />
+                AI要約を表示してください
+              </Typography>
+            </Box>
+          )}
+
+          {/* コメントセクション */}
+          {summary && ( // Only show comment section if summary exists
+            <Box sx={{ mt: 4, p: 2, border: '1px solid #00bcd4', borderRadius: '8px', display: 'flex', flexDirection: 'column', maxHeight: "50%", marginTop: 'auto' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flex: '0 0 auto' }}>
+                <CommentIcon color="action" fontSize="small" />
+                <Typography variant="h6" component="h3">
+                  コメント
+                </Typography>
+              </Box>
+              <Divider sx={{ mb: 2, borderColor: '#00bcd4' }} />
+              {!isLoggedIn ? (
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2, flex: '0 0 auto' }}>
+                  コメント機能を利用するにはログインが必要です。
+                </Typography>
+              ) : loadingComments ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', flex: '0 0 auto' }}>
+                  <CircularProgress size={20} />
+                </Box>
+              ) : comments.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ flex: '0 0 auto' }}>まだコメントはありません。</Typography>
+              ) : (
+                <List dense component="ul" sx={{ flex: 1, overflowY: 'auto', maxHeight: '300px', flexDirection: 'column-reverse', justifyContent: 'flex-end' }} ref={commentsEndRef}>
+                  {comments.map((comment) => (
+                    <ListItem key={comment.id} sx={{ flexDirection: 'column', alignItems: 'flex-start', borderBottom: '1px solid #eee', pb: 1, mb: 1 }}>
+                      <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {comment.username} - {new Intl.DateTimeFormat('ja-JP', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          }).format(new Date(comment.created_at + "Z"))}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ mt: 0.5 }}>{comment.content}</Typography>
+                      <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {Object.entries(comment.reaction_counts || {}).map(([type, count]) => (
+                          <Chip
+                            key={type}
+                            label={`${type} ${count}`}
+                            size="small"
+                            onClick={() => handleRemoveReaction(comment.id, type)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ))}
+                        <IconButton
+                          aria-label="add reaction"
+                          size="small"
+                          onClick={(event) => handleClickReactionMenu(event, comment.id)}
+                          sx={{ p: '4px' }}
+                        >
+                          <AddReactionIcon fontSize="small" />
+                        </IconButton>
+                        <Menu
+                          anchorEl={anchorEl}
+                          open={openReactionMenu && currentCommentIdForReaction === comment.id}
+                          onClose={handleCloseReactionMenu}
+                          MenuListProps={{
+                            'aria-labelledby': 'basic-button',
+                            sx: {
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              maxWidth: '200px', // 適宜調整
+                            }
+                          }}
+                        >
+                          {['👍', '❤️', '😂', '🎉', '😊', '😢'].map((emoji) => (
+                            <MenuItem
+                              key={emoji}
+                              onClick={() => {
+                                handleAddReaction(comment.id, emoji);
+                                handleCloseReactionMenu();
+                              }}
+                              sx={{ p: '4px 8px' }} // MenuItemのパディングを調整
+                            >
+                              {emoji}
+                            </MenuItem>
+                          ))}
+                        </Menu>
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flex: '0 0 auto' }}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  label="コメントを追加"
+                  value={newCommentContent}
+                  onChange={(e) => setNewCommentContent(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAddComment();
+                    }
+                  }}
+                  disabled={!isLoggedIn} // Disable if not logged in
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleAddComment}
+                  disabled={!isLoggedIn} // Disable if not logged in
+                >
+                  送信
+                </Button>
+              </Box>
+            </Box>
+      )} {/* Closing the conditional rendering for summary */}
     <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={() => setSnackbarOpen(false)}>
         <Alert onClose={() => setSnackbarOpen(false)} severity={snackbarSeverity} sx={{ width: '100%'}}>
           {snackbarMessage}

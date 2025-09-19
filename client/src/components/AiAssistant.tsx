@@ -37,8 +37,7 @@ export interface HistoryContent {
 interface AiAssistantProps {
   pdfSummaryContent?: string;
   summaryId?: number;
-  viewMode: 'new' | 'history' | 'current';
-  historicalContents?: HistoryContent[];
+  viewMode: 'new' | 'history' | 'current'; // 再追加
   currentMessages: Message[];
   onMessagesChange: (messages: Message[]) => void;
   currentPdfFilePaths?: string[];
@@ -46,7 +45,7 @@ interface AiAssistantProps {
   authToken?: string | null; // NEW: Add authToken prop (allow null)
 }
 
-const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContents, currentMessages, onMessagesChange, currentPdfFilePaths, username, authToken }: AiAssistantProps) => {
+const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, currentMessages, onMessagesChange, currentPdfFilePaths, username, authToken }: AiAssistantProps) => {
   const [input, setInput] = useState('');
   const [displayMessages, setDisplayMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,6 +60,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
     const userDisplayMessage: Message = { sender: 'user', text: displayMessage || message, username: username || undefined, timestamp: new Date().toISOString() }; // timestampを追加
     const newMessages = [...currentMessages, userDisplayMessage];
     onMessagesChange(newMessages); // 親コンポーネントに通知
+    setDisplayMessages(newMessages); // 即座に表示を更新
     setInput('');
     setLoading(true);
 
@@ -95,7 +95,8 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
       onMessagesChange(finalMessages); // 親コンポーネントに通知
 
       // 質問と回答のペアをバックエンドに保存
-      if (summaryId) { // summaryIdがある場合のみ保存
+      console.log(viewMode);
+      if (summaryId && viewMode !== 'history') { // summaryIdがある場合のみ保存
         const userQuestion = userDisplayMessage.text;
         const aiAnswer = data.reply;
         const category = userDisplayMessage.category || 'その他';
@@ -138,29 +139,9 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, historicalContent
 
   // 表示用メッセージの管理
   useEffect(() => {
-    console.log("AiAssistant useEffect triggered. viewMode:", viewMode, "historicalContents:", historicalContents, "currentMessages:", currentMessages);
-    if (viewMode === 'history') {
-      // 履歴表示モード: 履歴データをロード
-      const chatHistory = historicalContents?.find(c => c.section_type === 'ai_chat');
-      console.log("Found chatHistory in historicalContents:", chatHistory);
-      if (chatHistory && chatHistory.content) {
-        try {
-          const parsedMessages = JSON.parse(chatHistory.content);
-          console.log("Parsed chat messages:", parsedMessages);
-          setDisplayMessages(parsedMessages);
-        } catch (e) {
-          console.error("Failed to parse chat history:", e);
-          setDisplayMessages([]);
-        }
-      } else {
-        console.log("No chat history found or content is empty.");
-        setDisplayMessages([]);
-      }
-    } else {
-      // 'new' または 'current' モード: 親から渡されたメッセージを表示
-      setDisplayMessages(currentMessages);
-    }
-  }, [viewMode, historicalContents, currentMessages]);
+    console.log("AiAssistant useEffect triggered. currentMessages:", currentMessages);
+    setDisplayMessages(currentMessages);
+  }, [currentMessages]);
 
   // メッセージの追加時に一番下にスクロール
   useEffect(() => {

@@ -153,41 +153,42 @@ const SummaryTreeGraph: React.FC = () => {
     graphData.links.forEach(link => {
       const sourceNode = graphData.nodes.find(n => n.id === link.source);
       const targetNode = graphData.nodes.find(n => n.id === link.target);
-
-      if (sourceNode?.type === 'summary' && targetNode?.type === 'category') {
-        const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
-        elementsWithDepth.push({
-          data: { source: effectiveSourceId, target: link.target, type: 'summary_category_link' },
-          classes: 'summary_category_link',
-        });
-      } else if (sourceNode?.type === 'category' && (targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group')) { // NEW: 統合された質問ノードへのリンクも処理
-        elementsWithDepth.push({
-          data: { source: link.source, target: link.target, type: 'category_question_link' },
-          classes: 'category_question_link',
-        });
-      } else if (link.type === 'similarity_link') { // NEW: 類似度リンクを追加
-        const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
-        const effectiveTargetId = childToRootSummaryMap.get(link.target) || link.target;
-        elementsWithDepth.push({
-          data: { source: effectiveSourceId, target: effectiveTargetId, type: 'similarity_link' },
-          classes: 'similarity_link',
-        });
-      } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
-        // Only create parent_summary_link if both the sourceNode and targetNode are root summaries
-        if (!sourceNode.parent_summary_id && !targetNode.parent_summary_id) {
+      try {
+        if (sourceNode?.type === 'summary' && targetNode?.type === 'category') {
+          const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
           elementsWithDepth.push({
-            data: { source: link.source, target: link.target, type: 'parent_summary_link' },
-            classes: 'parent_summary_link',
+            data: { source: effectiveSourceId, target: link.target, type: 'summary_category_link' },
+            classes: 'summary_category_link',
+          });
+        } else if (sourceNode?.type === 'category' && (targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group')) { // NEW: 統合された質問ノードへのリンクも処理
+          elementsWithDepth.push({
+            data: { source: link.source, target: link.target, type: 'category_question_link' },
+            classes: 'category_question_link',
+          });
+        } else if (link.type === 'similarity_link') { // NEW: 類似度リンクを追加
+          const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
+          const effectiveTargetId = childToRootSummaryMap.get(link.target) || link.target;
+          elementsWithDepth.push({
+            data: { source: effectiveSourceId, target: effectiveTargetId, type: 'similarity_link' },
+            classes: 'similarity_link',
+          });
+        } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
+          // Only create parent_summary_link if both the sourceNode and targetNode are root summaries
+          if (!sourceNode.parent_summary_id && !targetNode.parent_summary_id) {
+            elementsWithDepth.push({
+              data: { source: link.source, target: link.target, type: 'parent_summary_link' },
+              classes: 'parent_summary_link',
+            });
+          }
+        } else if ((targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group') && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
+          const originalSummaryId = `summary_${targetNode.original_summary_id}`;
+          const effectiveSourceId = childToRootSummaryMap.get(originalSummaryId) || originalSummaryId;
+          elementsWithDepth.push({
+            data: { source: effectiveSourceId, target: link.target, type: 'summary_question_link' },
+            classes: 'summary_question_link',
           });
         }
-      } else if ((targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group') && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
-        const originalSummaryId = `summary_${targetNode.original_summary_id}`;
-        const effectiveSourceId = childToRootSummaryMap.get(originalSummaryId) || originalSummaryId;
-        elementsWithDepth.push({
-          data: { source: effectiveSourceId, target: link.target, type: 'summary_question_link' },
-          classes: 'summary_question_link',
-        });
-      }
+      } catch {}
     });
 
     setProcessedElements(elementsWithDepth);
@@ -199,7 +200,7 @@ const SummaryTreeGraph: React.FC = () => {
     animate: true, // アニメーションを有効にする
     animationDuration: 300, // アニメーション時間を短縮
     animationEasing: 'ease-out', // easing of animation if enabled
-    // fit: true, // 部分的なレイアウトではfitは無効にするため、ここでは削除
+    fit: true, // グラフ全体がビューポートに収まるように自動調整
     padding: 50, // the padding on the sides of the graph
     nodeDimensionsIncludeLabels: true, // whether to include labels in node dimensions
     tile: true, // whether to enable tiling
@@ -396,14 +397,11 @@ const SummaryTreeGraph: React.FC = () => {
           nodeData.original_questions_details?.forEach((originalQuestion: any) => {
             const safeOriginalQuestionId = originalQuestion.id.replace(/[^a-zA-Z0-9-_]/g, '_'); // 英数字、ハイフン、アンダースコア以外をアンダースコアに置換
             const childNodeId = `child_question_${nodeData.id}_${safeOriginalQuestionId}`;
-            console.log(`Attempting to remove child node with ID: ${childNodeId}`); // デバッグログ
             const childNode = cyRef.current!.$(`#${childNodeId}`);
-            console.log(`Child node found (length): ${childNode.length}`); // デバッグログ
             if (childNode.length > 0) {
               cyRef.current!.remove(childNode); // 子ノードを削除
             }
             const edge = cyRef.current!.$(`edge[source='${nodeData.id}'][target='${childNodeId}']`);
-            console.log(`Edge found (length): ${edge.length}`); // デバッグログ
             if (edge.length > 0) {
               cyRef.current!.remove(edge); // エッジを削除
             }
@@ -415,7 +413,6 @@ const SummaryTreeGraph: React.FC = () => {
           nodeData.original_questions_details?.forEach((originalQuestion: any) => {
             const safeOriginalQuestionId = originalQuestion.id.replace(/[^a-zA-Z0-9-_]/g, '_'); // 英数字、ハイフン、アンダースコア以外をアンダースコアに置換
             const childNodeId = `child_question_${nodeData.id}_${safeOriginalQuestionId}`;
-            console.log(`Attempting to add child node with ID: ${childNodeId}`); // デバッグログ
             newElements.push({
               data: {
                 id: childNodeId,

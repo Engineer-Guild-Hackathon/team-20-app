@@ -28,8 +28,9 @@ import HomeIcon from '@mui/icons-material/Home';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SaveIcon from '@mui/icons-material/Save'; // Added
 import PdfViewer from './components/PdfViewer';
+import PdfDocumentViewer from './components/PdfDocumentViewer'; // NEW: Import PdfDocumentViewer
 import AiAssistant, { Message } from './components/AiAssistant';
-import Workspace from './components/Workspace';
+
 import FileUploadButton from './components/FileUploadButton';
 import LoginModal from './components/LoginModal';
 import RegisterModal from './components/RegisterModal';
@@ -565,6 +566,16 @@ function App() {
     }
   };
 
+  const clearPreviousHistoryState = useCallback(() => {
+    setPreviousPdfSummary(undefined);
+    setPreviousPdfFilename(undefined);
+    setPreviousPdfSummaryId(undefined);
+    setPreviousPdfTags(undefined);
+    setPreviousPdfFilePath(undefined);
+    setPreviousChatMessages(undefined);
+    setPreviousViewMode(undefined);
+  }, []);
+
   const handleExitHistoryView = useCallback(() => {
     // 一時保存した状態を復元
     setPdfSummary(previousPdfSummary || '');
@@ -576,13 +587,7 @@ function App() {
     setViewMode(previousViewMode || 'new'); // previousViewModeがundefinedの場合は'new'に
 
     // 一時保存状態をクリア
-    setPreviousPdfSummary(undefined);
-    setPreviousPdfFilename(undefined);
-    setPreviousPdfSummaryId(undefined);
-    setPreviousPdfTags(undefined);
-    setPreviousPdfFilePath(undefined);
-    setPreviousChatMessages(undefined);
-    setPreviousViewMode(undefined);
+    clearPreviousHistoryState();
 
     // sessionStorageも更新
     try {
@@ -601,7 +606,7 @@ function App() {
     }
 
   }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode,
-      previousPdfSummary, previousPdfFilename, previousPdfSummaryId, previousPdfTags, previousPdfFilePath, previousChatMessages, previousViewMode]);
+      previousPdfSummary, previousPdfFilename, previousPdfSummaryId, previousPdfTags, previousPdfFilePath, previousChatMessages, previousViewMode, clearPreviousHistoryState]);
 
   const handleSaveSummary = async (summary: string, filename: string, teamId: number | null, teamName: string | null, tags?: string[] | null, usernameFromProps?: string | null): Promise<number | undefined> => {
     console.log('handleSaveSummary called.');
@@ -877,6 +882,9 @@ function App() {
                   <Button variant="contained" color="secondary" size="small" onClick={handleExitHistoryView}>
                     元の作業に戻る
                   </Button>
+                  <Button variant="outlined" color="secondary" size="small" sx={{ ml: 1 }} onClick={clearPreviousHistoryState}>
+                    この作業を続ける
+                  </Button>
                 </Box>
               )}
               <Box sx={{ display: 'flex', gap: 2, height: `calc(100vh - ${previousPdfSummary !== undefined ? '225px' : '150px'})` }}>
@@ -896,9 +904,8 @@ function App() {
                   <AiAssistant
                     pdfSummaryContent={pdfSummary}
                     summaryId={pdfSummaryId}
+                    viewMode={viewMode} // NEW: viewModeを渡す
                     currentPdfFilePaths={pdfFilePath} // New prop
-                    viewMode={viewMode}
-                    historicalContents={historicalContents}
                     currentMessages={chatMessages}
                     onMessagesChange={handleMessagesChange}
                     username={username}
@@ -906,7 +913,10 @@ function App() {
                   />
                 </Box>
                 <Box sx={{ flex: 1, overflow: "hidden" }}>
-                  <Workspace />
+                  <PdfDocumentViewer
+                    pdfFilePath={pdfFilePath}
+                    filename={pdfFilename}
+                  />
                 </Box>
               </Box>
             </Container>

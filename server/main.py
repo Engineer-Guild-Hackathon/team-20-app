@@ -1678,6 +1678,17 @@ async def download_shared_file(
 
     return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
 
+@app.get("/api/files/serve/{unique_filename}")
+async def serve_uploaded_file(unique_filename: str):
+    """アップロードされたファイルを直接提供するエンドポイント"""
+    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
+    # セキュリティ: UPLOAD_DIRECTORY内にあることを確認
+    if not os.path.abspath(file_path).startswith(os.path.abspath(UPLOAD_DIRECTORY)):
+        raise HTTPException(status_code=400, detail="不正なファイルパスです")
+    
+    return FileResponse(path=file_path, filename=unique_filename)
 
 @app.post("/api/teams/{team_id}/messages", response_model=MessageResponse)
 async def send_message(
@@ -2110,9 +2121,6 @@ async def get_summary_tree_graph(
     for node in final_nodes:
         logging.info(f"  Node: id={node.id}, label={node.label}, type={node.type}, grouped_question_ids={node.grouped_question_ids}")
 
-    logging.info(f"Generated final links count: {len(final_links)}")
-    for link in final_links:
-        logging.info(f"  Link: source={link.source}, target={link.target}, type={link.type}")
     return GraphData(nodes=final_nodes, links=final_links)
 async def get_summary_detail(
     summary_id: int,
@@ -2255,7 +2263,6 @@ async def get_history_content_by_id(
 if __name__ == "__main__":
     # CPUコア数の半分に基づいてワーカー数を設定（最低1ワーカー）
     num_workers = max(1, (os.cpu_count() or 1) // 2)
-    logging.info(f"Starting Uvicorn with {num_workers} workers (half of CPU cores).")
     config = uvicorn.Config("main:app", host="0.0.0.0", port=8000, reload=True, workers=num_workers)
     server = uvicorn.Server(config)
     server.run()
