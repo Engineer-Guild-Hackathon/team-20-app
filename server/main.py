@@ -1654,24 +1654,31 @@ async def get_shared_files(
 @app.get("/api/files/{file_id}")
 async def download_shared_file(
     file_id: int,
-    current_user: User = Depends(get_required_user),
+    current_user: Optional[User] = Depends(get_current_user), # 認証を任意にする
     db: Session = Depends(get_db)
 ):
     """共有ファイルをダウンロードするエンドポイント。
     チームに紐づくファイルはチームメンバーのみ許可。
     チーム未紐づけ(None)のファイルは、アップロード者が設定されていれば本人のみ、
     未設定(None)なら認証済みユーザーであれば許可（個人作業フローの利便性優先）。
+    また、uploaded_by_user_idもteam_idもNoneのファイルは、認証なしでアクセス可能。
     """
     shared_file = db.query(SharedFile).filter(SharedFile.id == file_id).first()
     if not shared_file:
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
     # アクセス許可判定
-    if shared_file.team_id is None:
-        # 個人用（または匿名アップロード）ファイル
+    if shared_file.team_id is None and shared_file.uploaded_by_user_id is None:
+        # uploaded_by_user_idもteam_idもNoneの場合、認証なしでアクセス可能
+        pass
+    elif current_user is None:
+        # 認証が必要なファイルに対して、ユーザーが認証されていない場合は401
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="認証が必要です")
+    elif shared_file.team_id is None:
+        # 個人用ファイル（uploaded_by_user_idが設定されている場合）
         if shared_file.uploaded_by_user_id is not None and shared_file.uploaded_by_user_id != current_user.id:
             raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
-        # uploaded_by_user_id が None の場合は、認証済みユーザーであれば許可
+        # uploaded_by_user_id が None の場合は、認証済みユーザーであれば許可（このブロックには入らないはずだが念のため）
     else:
         # チームに紐づく場合はメンバーシップ必須
         team_membership = db.query(TeamMember).filter(
@@ -2053,7 +2060,9 @@ async def get_summary_tree_graph(
                 original_questions_details_list.append({
                     "id": original_node.id,
                     "label": original_node.label,
-                    "question_id": original_node.question_id
+                    "question_id": original_node.question_id,
+                    "ai_answer": original_node.ai_answer, # Add AI answer
+                    "ai_answer_summary": original_node.ai_answer_summary # Add summarized AI answer
                 })
 
             integrated_node = GraphNode(
@@ -2062,15 +2071,14 @@ async def get_summary_tree_graph(
                 type="user_question_group",
                 summary_id=representative_node_data.summary_id,
                 question_id=integrated_node_id,
-                ai_answer=None,
-                ai_answer_summary=None,
+                ai_answer=representative_node_data.ai_answer, # Use representative node's AI answer
+                ai_answer_summary=representative_node_data.ai_answer_summary, # Use representative node's summarized AI answer
                 question_created_at=representative_node_data.question_created_at,
                 category=representative_node_data.category,
                 history_content_id=None,
                 original_summary_id=representative_node_data.original_summary_id,
                 grouped_question_ids=group,
-                original_questions_details=original_questions_details_list # ここで詳細情報を追加
-            )
+                original_questions_details=original_questions_details_list
             final_nodes.append(integrated_node)
 
             for original_q_id in group:

@@ -27,7 +27,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   useEffect(() => {
     let revokeUrl: string | null = null;
     const loadPdf = async () => {
-      if (pdfFilePath && pdfFilePath.length > 0 && isLoggedIn) {
+      if (pdfFilePath && pdfFilePath.length > 0) {
         const safeIndex = Math.min(Math.max(selectedFileIndex, 0), pdfFilePath.length - 1);
         const fileId = pdfFilePath[safeIndex];
         try {

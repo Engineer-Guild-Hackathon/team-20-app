@@ -622,10 +622,20 @@ const SummaryTreeGraph: React.FC = () => {
               <Typography variant="subtitle2">統合された質問:</Typography>
               <List dense>
                 {selectedNode.original_questions_details.map((originalQuestion, index) => (
-                  <ListItem key={index}>
-                    <Typography variant="body2">
-                      - {originalQuestion.label} (ID: {originalQuestion.question_id})
+                  <ListItem key={index} sx={{ flexDirection: 'column', alignItems: 'flex-start', mb: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                      質問: {originalQuestion.label}
                     </Typography>
+                    {originalQuestion.ai_answer && (
+                      <Box sx={{ mt: 0.5, width: '100%' }}>
+                        <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
+                          AIの回答:
+                        </Typography>
+                        <ReactMarkdown className="markdown-content">
+                          {originalQuestion.ai_answer_summary || originalQuestion.ai_answer}
+                        </ReactMarkdown>
+                      </Box>
+                    )}
                   </ListItem>
                 ))}
               </List>
