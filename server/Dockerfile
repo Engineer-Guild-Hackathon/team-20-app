@@ -14,6 +14,7 @@ WORKDIR /app
 # Minimal OS deps (certs for HTTPS downloads)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first (leverage layer cache)

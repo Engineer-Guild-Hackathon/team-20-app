@@ -26,8 +26,14 @@ from sentence_transformers import SentenceTransformer, util
 
 import torch # NEW: torchをインポート
 
-# Initialize SentenceTransformer model globally
-embedding_model = SentenceTransformer('all-mpnet-base-v2')
+# Lazy initialize SentenceTransformer to avoid long cold-start
+embedding_model = None
+
+def get_embedding_model():
+    global embedding_model
+    if embedding_model is None:
+        embedding_model = SentenceTransformer('all-mpnet-base-v2')
+    return embedding_model
 
 # Files are stored in PostgreSQL (SharedFile.content); no local storage is used.
 
@@ -1232,7 +1238,8 @@ async def save_summary(
 
                     user_question_embeddings = None
                     if combined_texts_for_embedding:
-                        embeddings_list = [embedding_model.encode(t, convert_to_tensor=True) for t in combined_texts_for_embedding]
+                        model = get_embedding_model()
+                        embeddings_list = [model.encode(t, convert_to_tensor=True) for t in combined_texts_for_embedding]
                         avg_embedding = sum([e.cpu().numpy() for e in embeddings_list]) / len(embeddings_list)
                         user_question_embeddings = avg_embedding
 
@@ -1319,7 +1326,8 @@ async def save_summary(
 
                     user_question_embeddings = None
                     if combined_texts_for_embedding:
-                        embeddings_list = [embedding_model.encode(t, convert_to_tensor=True) for t in combined_texts_for_embedding]
+                        model = get_embedding_model()
+                        embeddings_list = [model.encode(t, convert_to_tensor=True) for t in combined_texts_for_embedding]
                         avg_embedding = sum([e.cpu().numpy() for e in embeddings_list]) / len(embeddings_list)
                         user_question_embeddings = avg_embedding
 
@@ -1945,12 +1953,14 @@ async def get_summary_tree_graph(
         if node.history_content_id and node.history_content_id in history_content_embeddings_map:
             embedding_list = history_content_embeddings_map[node.history_content_id]
             embedding = torch.tensor(embedding_list)
-            if embedding.shape[-1] != embedding_model.get_sentence_embedding_dimension():
-                logging.warning(f"Embedding dimension mismatch for HistoryContent ID {node.history_content_id}. Expected {embedding_model.get_sentence_embedding_dimension()}, got {embedding.shape[-1]}. Regenerating embedding.")
+            model = get_embedding_model()
+            if embedding.shape[-1] != model.get_sentence_embedding_dimension():
+                logging.warning(f"Embedding dimension mismatch for HistoryContent ID {node.history_content_id}. Expected {model.get_sentence_embedding_dimension()}, got {embedding.shape[-1]}. Regenerating embedding.")
                 embedding = None
 
         if embedding is None:
-            embedding = embedding_model.encode(q_text, convert_to_tensor=True)
+            model = get_embedding_model()
+            embedding = model.encode(q_text, convert_to_tensor=True)
         
         if embedding is not None:
             embeddings[q_id] = embedding
