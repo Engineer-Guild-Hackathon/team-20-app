@@ -2079,6 +2079,7 @@ async def get_summary_tree_graph(
                 original_summary_id=representative_node_data.original_summary_id,
                 grouped_question_ids=group,
                 original_questions_details=original_questions_details_list
+            )
             final_nodes.append(integrated_node)
 
             for original_q_id in group:
