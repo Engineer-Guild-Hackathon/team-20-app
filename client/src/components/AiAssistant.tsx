@@ -74,7 +74,8 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, currentMessages, 
 
       // summaryIdが存在しない場合のみoriginal_file_pathsを追加
       if (summaryId === undefined) {
-        requestBody.original_file_paths = currentPdfFilePaths;
+        // Backend accepts both int/str, but normalize to string to avoid 422
+        requestBody.original_file_paths = currentPdfFilePaths?.map(String);
       }
 
       const response = await fetch(`${API_BASE}/api/chat`, {

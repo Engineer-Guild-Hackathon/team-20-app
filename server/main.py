@@ -16,7 +16,7 @@ from database import Base, engine, SessionLocal, User, UserSession, SummaryHisto
 # (SQLite-specific migration utilities removed)
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import uuid
 from fastapi.responses import Response
 import re # 追加
@@ -191,8 +191,9 @@ class ChatRequest(BaseModel):
     message: str
     pdf_summary: Optional[str] = None
     summary_id: Optional[int] = None
-    original_file_paths: Optional[List[str]] = None # 追加
-    parent_summary_id: Optional[int] = None # NEW FIELD
+    # Accept both int and str IDs from client for compatibility
+    original_file_paths: Optional[List[Union[int, str]]] = None
+    parent_summary_id: Optional[int] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -210,7 +211,8 @@ class SaveSummaryRequest(BaseModel):
     summary: str
     team_id: Optional[int] = None # 追加
     tags: Optional[List[str]] = None # 追加
-    original_file_path: Optional[List[str]] = None # PDFファイルパス
+    # Accept both int and str IDs from client
+    original_file_path: Optional[List[Union[int, str]]] = None
     ai_chat_history: Optional[str] = None # 追加: AI Assistantのチャット履歴 (JSON文字列)
     parent_summary_id: Optional[int] = None # NEW FIELD
 
@@ -277,7 +279,8 @@ class SummaryListItemResponse(BaseModel):
     team_name: Optional[str] = None
     tags: List[str] = []
     chat_history_id: Optional[int] = None  # チャット履歴IDを追加
-    original_file_path: Optional[List[str]] = None # 追加
+    # IDs may be stored as strings or ints
+    original_file_path: Optional[List[Union[int, str]]] = None
     parent_summary_id: Optional[int] = None # NEW FIELD
 
     class Config:
@@ -294,7 +297,7 @@ class SummaryHistoryDetailResponse(BaseModel):
     summary: str
     created_at: datetime
     contents: Optional[List[HistoryContentResponse]] = None # 変更
-    original_file_path: Optional[List[str]] = None # 追加
+    original_file_path: Optional[List[Union[int, str]]] = None
     parent_summary_id: Optional[int] = None # NEW FIELD
 
     class Config:
