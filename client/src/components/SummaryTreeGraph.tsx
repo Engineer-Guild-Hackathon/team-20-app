@@ -350,12 +350,7 @@ const SummaryTreeGraph: React.FC = () => {
       // エラーが発生した場合の追加の処理（例: レイアウトをリセットするなど）
     }
 
-    // クリーンアップ関数を返す
-    return () => {
-      if (cyRef.current) { // cyRef.current を参照
-        cyRef.current.destroy(); // cyRef.current を参照
-      }
-    };
+    // クリーンアップ関数から cyRef.current.destroy() を削除
   }, [processedElements, layout]); // 依存配列も cyRef.current に変更
 
   const style = [

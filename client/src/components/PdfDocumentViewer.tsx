@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -22,10 +22,22 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
   const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
 
   useEffect(() => {
     let revokeUrl: string | null = null;
+
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+
     const loadPdf = async () => {
       if (pdfFilePath && pdfFilePath.length > 0) {
         const safeIndex = Math.min(Math.max(selectedFileIndex, 0), pdfFilePath.length - 1);
@@ -51,6 +63,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
     loadPdf();
     return () => {
       if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+      window.removeEventListener('resize', updateWidth);
     };
   }, [pdfFilePath, selectedFileIndex, authToken, isLoggedIn]); // Add authToken and isLoggedIn to dependencies
 
@@ -127,7 +140,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
         </Box>
       )}
 
-      <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
+      <Box ref={containerRef} sx={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', maxWidth: '100%', overflowX: "hidden" }}>
         {pdfUrl ? (
           <Document
             file={pdfUrl || undefined}
@@ -136,7 +149,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
             error={<Typography color="error">PDFの読み込みに失敗しました。</Typography>}
             noData={<Typography>PDFファイルがありません。</Typography>}
           >
-            <Page pageNumber={pageNumber} width={Math.min(window.innerWidth * 0.4, 600)} /> {/* Adjust width as needed */}
+            <Page pageNumber={pageNumber} width={containerWidth} /> {/* Adjust width as needed */}
           </Document>
         ) : (
           <Typography variant="body1" textAlign="center" color="text.secondary">
