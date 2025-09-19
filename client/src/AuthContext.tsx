@@ -3,13 +3,14 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 interface AuthContextType {
   authToken: string | null;
   setAuthToken: (token: string | null) => void;
-  // 必要に応じて他の認証関連の状態や関数を追加
+  isLoggedIn: boolean; // NEW: Derived from authToken
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('access_token'));
+  const isLoggedIn = !!authToken; // Derive isLoggedIn from authToken
 
   // authTokenが変更されたらlocalStorageも更新
   React.useEffect(() => {
@@ -21,7 +22,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [authToken]);
 
   return (
-    <AuthContext.Provider value={{ authToken, setAuthToken }}>
+    <AuthContext.Provider value={{ authToken, setAuthToken, isLoggedIn }}>
       {children}
     </AuthContext.Provider>
   );

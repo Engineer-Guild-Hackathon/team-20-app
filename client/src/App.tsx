@@ -79,7 +79,7 @@ interface SessionState {
 }
 
 function App() {
-  const { authToken, setAuthToken } = useAuth(); // NEW: setAuthTokenを取得
+  const { authToken, setAuthToken, isLoggedIn } = useAuth(); // Use isLoggedIn from AuthContext
   const location = useLocation();
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
@@ -94,7 +94,7 @@ function App() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+
   const [username, setUsername] = useState<string | null>(null);
   const [myTeams, setMyTeams] = useState<Team[]>([]); // New
   const [selectedTeamId, setSelectedTeamId] = useState<number | '' | '個人用'>(''); // New
@@ -200,14 +200,14 @@ function App() {
         });
         if (response.ok) {
           const data = await response.json();
-          setIsLoggedIn(true);
+          // setIsLoggedIn(true); // REMOVED
           setUsername(data.username);
           setAuthToken(token); // NEW: Update AuthContext's authToken
           loadSession(); // ログイン成功時にセッションをロード
         } else {
           // トークンが無効な場合はログアウト状態にする
           localStorage.removeItem('access_token');
-          setIsLoggedIn(false);
+          // setIsLoggedIn(false); // REMOVED
           setUsername(null);
           setAuthToken(null); // NEW: Clear AuthContext's authToken
           showSnackbar('セッションの有効期限が切れました。再度ログインしてください。', 'warning');
@@ -215,12 +215,12 @@ function App() {
       } catch (error) {
         console.error('Error checking auth:', error);
         localStorage.removeItem('access_token');
-        setIsLoggedIn(false);
+        // setIsLoggedIn(false); // REMOVED
         setUsername(null);
         setAuthToken(null); // NEW: Clear AuthContext's authToken
       }
     } else {
-      setIsLoggedIn(false);
+      // setIsLoggedIn(false); // REMOVED
       setUsername(null);
       setAuthToken(null); // NEW: Clear AuthContext's authToken
     }
@@ -241,8 +241,7 @@ function App() {
   // New useEffect for fetching teams
   useEffect(() => {
     const fetchMyTeams = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
+      if (!authToken) {
         setMyTeams([]);
         return;
       }
@@ -250,7 +249,7 @@ function App() {
       try {
         const response = await fetch(`${API_BASE}/api/users/me/teams`, {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${authToken}`,
           },
         });
 
@@ -267,23 +266,18 @@ function App() {
       }
     };
 
-    if (isLoggedIn) {
-      fetchMyTeams();
-    } else {
-      setMyTeams([]); // ログアウト時はチームをクリア
-    }
-  }, [isLoggedIn]);
+    fetchMyTeams();
+  }, [authToken]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
+      if (!authToken) {
         setUsername(null);
         return;
       }
       try {
         const response = await fetch(`${API_BASE}/api/users/me`, {
-          headers: { 'Authorization': `Bearer ${token}` },
+          headers: { 'Authorization': `Bearer ${authToken}` },
         });
         if (response.ok) {
           const data = await response.json();
@@ -298,38 +292,34 @@ function App() {
       }
     };
 
-    if (isLoggedIn) {
-      fetchUserInfo();
-    } else {
-      setUsername(null); // ログアウト時はユーザー名をクリア
-    }
-  }, [isLoggedIn]);
+    fetchUserInfo();
+  }, [authToken]);
 
   const fetchHistories = useCallback(async () => {
-    if (isLoggedIn) {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      try {
-        const response = await fetch(`${API_BASE}/api/summaries`, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (response.ok) {
-          const data: HistoryItem[] = await response.json();
-          setSummaryHistories(data);
-        } else {
-          console.error('Failed to fetch summary histories');
-          setSummaryHistories([]);
-        }
-      } catch (error) {
-        console.error('Error fetching summary histories:', error);
+    if (!authToken) {
+      setSummaryHistories([]);
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/summaries`, {
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      });
+      if (response.ok) {
+        const data: HistoryItem[] = await response.json();
+        setSummaryHistories(data);
+      } else {
+        console.error('Failed to fetch summary histories');
         setSummaryHistories([]);
       }
+    } catch (error) {
+      console.error('Error fetching summary histories:', error);
+      setSummaryHistories([]);
     }
-  }, [isLoggedIn, setSummaryHistories]);
+  }, [authToken, setSummaryHistories]);
 
   useEffect(() => {
     fetchHistories();
-  }, [isLoggedIn, fetchHistories]);
+  }, [fetchHistories]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
   const handleCloseMenu = () => setAnchorEl(null);
@@ -341,7 +331,7 @@ function App() {
 
   const handleLogout = () => {
     saveSession(); // ログアウト前にセッションを保存
-    localStorage.removeItem('access_token');
+    setAuthToken(null); // NEW: Clear AuthContext's authToken
     handleCloseMenu();
     checkAuth(); // 認証状態を再チェック
     showSnackbar('ログアウトしました。', 'info');
@@ -615,8 +605,7 @@ function App() {
       setIsLoginModalOpen(true);
       return undefined; // Return undefined on failure
     }
-    const token = localStorage.getItem('access_token');
-    if (!token) return undefined; // Return undefined on failure
+    if (!authToken) return undefined; // Use authToken directly
 
     setIsSaving(true); // 保存開始
 
@@ -631,7 +620,7 @@ function App() {
     if (currentUsername === null) {
       try {
         const response = await fetch(`${API_BASE}/api/users/me`, {
-          headers: { 'Authorization': `Bearer ${token}` },
+          headers: { 'Authorization': `Bearer ${authToken}` }, // Use authToken
         });
         if (response.ok) {
           const data = await response.json();
@@ -649,7 +638,7 @@ function App() {
       // 1. 要約を保存して、新しいIDを取得
       const summaryResponse = await fetch(`${API_BASE}/api/save-summary`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, // Use authToken
           body: JSON.stringify({
             filename,
             summary,
