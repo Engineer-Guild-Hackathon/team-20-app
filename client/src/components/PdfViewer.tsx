@@ -53,7 +53,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${id}/comments`, {
+      const response = await fetch(`${API_BASE}/api/summaries/${id}/comments`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -108,7 +108,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
 
     // summaryIdがある場合は既存のロジックでコメントを保存
     try {
-      const response = await fetch('http://localhost:8000/api/comments', {
+      const response = await fetch(`${API_BASE}/api/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -146,7 +146,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`${API_BASE}/api/comments/${commentId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +179,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`${API_BASE}/api/comments/${commentId}/reactions`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -394,3 +394,4 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ summary, filename, summaryId, tag
 };
 
 export default PdfViewer;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

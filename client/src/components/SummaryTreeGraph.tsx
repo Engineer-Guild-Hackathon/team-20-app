@@ -53,7 +53,7 @@ const SummaryTreeGraph: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:8000/api/summary-tree-graph', {
+      const response = await fetch(`${API_BASE}/api/summary-tree-graph`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
@@ -596,3 +596,4 @@ const SummaryTreeGraph: React.FC = () => {
 };
 
 export default SummaryTreeGraph;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

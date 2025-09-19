@@ -72,7 +72,7 @@ interface SessionState {
   pdfFilename: string;
   pdfSummaryId?: number;
   pdfTags: string[];
-  pdfFilePath: string[];
+  pdfFilePath: number[]; // now contains SharedFile IDs
   chatMessages: Message[];
   viewMode: 'new' | 'history' | 'current';
   selectedTeamId: number | '' | '個人用';
@@ -86,7 +86,7 @@ function App() {
   const [pdfSummaryId, setPdfSummaryId] = useState<number | undefined>(undefined);
   const [currentLoadedSummaryId, setCurrentLoadedSummaryId] = useState<number | undefined>(undefined); // NEW STATE
   const [pdfTags, setPdfTags] = useState<string[]>([]);
-  const [pdfFilePath, setPdfFilePath] = useState<string[]>([]);
+  const [pdfFilePath, setPdfFilePath] = useState<number[]>([]);
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
   const [viewMode, setViewMode] = useState<'new' | 'history' | 'current'>('new');
   const [historicalContents, setHistoricalContents] = useState<HistoryContent[] | undefined>(undefined);
@@ -133,7 +133,7 @@ function App() {
     };
 
     try {
-      await fetch('http://localhost:8000/api/session', {
+      await fetch(`${API_BASE}/api/session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -154,7 +154,7 @@ function App() {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/session', {
+      const response = await fetch(`${API_BASE}/api/session`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -196,7 +196,7 @@ function App() {
     const token = localStorage.getItem('access_token');
     if (token) {
       try {
-        const response = await fetch('http://localhost:8000/api/users/me', {
+        const response = await fetch(`${API_BASE}/api/users/me`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -245,7 +245,7 @@ function App() {
       }
 
       try {
-        const response = await fetch('http://localhost:8000/api/users/me/teams', {
+        const response = await fetch(`${API_BASE}/api/users/me/teams`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -279,7 +279,7 @@ function App() {
         return;
       }
       try {
-        const response = await fetch('http://localhost:8000/api/users/me', {
+        const response = await fetch(`${API_BASE}/api/users/me`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -307,7 +307,7 @@ function App() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       try {
-        const response = await fetch('http://localhost:8000/api/summaries', {
+        const response = await fetch(`${API_BASE}/api/summaries`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -429,7 +429,7 @@ function App() {
     setSnackbarOpen(false);
   };
 
-  const handleSummaryGeneratedFromTeamUpload = async (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
+  const handleSummaryGeneratedFromTeamUpload = async (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: number[]) => {
     // First, set the current summary details in App state
     setPdfSummary(summary);
     setPdfFilename(filename);
@@ -446,7 +446,7 @@ function App() {
     navigate('/'); // Navigate to main page
   };
 
-  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => {
+  const handleSummaryGenerated = (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: number[]) => {
     setPdfSummary(summary);
     setPdfFilename(filename);
     setPdfSummaryId(summaryId);
@@ -497,7 +497,7 @@ function App() {
     setPreviousViewMode(viewMode);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${item.id}`, {
+      const response = await fetch(`${API_BASE}/api/summaries/${item.id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('履歴詳細の読み込みに失敗しました。');
@@ -632,7 +632,7 @@ function App() {
     // まだusernameがnullの場合、APIから取得を試みる
     if (currentUsername === null) {
       try {
-        const response = await fetch('http://localhost:8000/api/users/me', {
+        const response = await fetch(`${API_BASE}/api/users/me`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
@@ -649,7 +649,7 @@ function App() {
 
     try {
       // 1. 要約を保存して、新しいIDを取得
-      const summaryResponse = await fetch('http://localhost:8000/api/save-summary', {
+      const summaryResponse = await fetch(`${API_BASE}/api/save-summary`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
@@ -754,7 +754,7 @@ function App() {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/comments', {
+      const response = await fetch(`${API_BASE}/api/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -992,3 +992,4 @@ function App() {
 }
 
 export default App;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

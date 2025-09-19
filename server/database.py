@@ -1,11 +1,15 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, Text
+import os
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, Text, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
 
-DATABASE_URL = "sqlite:///./test.db?journal_mode=WAL"
+# Require DATABASE_URL for PostgreSQL (e.g., postgres:// or postgresql://)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable must be set for PostgreSQL")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -137,9 +141,10 @@ class SharedFile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, nullable=False)
-    filepath = Column(String, unique=True, nullable=False) # サーバー上の保存パス
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    uploaded_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Store file binary content in DB (PostgreSQL BYTEA)
+    content = Column(LargeBinary, nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    uploaded_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
     team = relationship("Team", back_populates="shared_files")

@@ -23,11 +23,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. 環境変数の設定（オプション）
+### 3. 環境変数の設定（必須）
 
 ```bash
 cp .env.example .env
 # .envファイルを編集して必要な環境変数を設定
+# このサーバーはPostgreSQLのみ対応です。必ずDATABASE_URLを設定してください。
+# 例: DATABASE_URL=postgresql+psycopg2://username:password@host:5432/dbname
 ```
 
 ## 起動方法

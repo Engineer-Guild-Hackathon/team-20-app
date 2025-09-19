@@ -3,7 +3,7 @@ import { Button, CircularProgress, Alert, Snackbar, IconButton, Menu, MenuItem, 
 import { CloudUpload, MoreVert as MoreVertIcon } from '@mui/icons-material';
 
 interface FileUploadButtonProps {
-  onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: string[]) => void;
+  onSummaryGenerated: (summary: string, filename: string, summaryId?: number, tags?: string[], filePath?: number[]) => void;
   onClearWorkspace: () => void;
 }
 
@@ -67,7 +67,7 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated,
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/upload-pdf', {
+      const response = await fetch(`${API_BASE}/api/upload-pdf`, {
         method: 'POST',
         body: formData,
       });
@@ -161,3 +161,4 @@ const FileUploadButton: React.FC<FileUploadButtonProps> = ({ onSummaryGenerated,
 };
 
 export default FileUploadButton;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

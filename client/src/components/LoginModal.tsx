@@ -30,7 +30,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
 
   const handleLogin = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/login', {
+      const response = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,3 +106,4 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
 };
 
 export default LoginModal;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

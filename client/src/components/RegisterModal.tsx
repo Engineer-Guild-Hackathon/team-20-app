@@ -22,7 +22,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ open, onClose }) => {
 
   const handleRegister = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/register', {
+      const response = await fetch(`${API_BASE}/api/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,3 +104,4 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ open, onClose }) => {
 };
 
 export default RegisterModal;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

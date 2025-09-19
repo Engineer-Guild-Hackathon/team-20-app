@@ -29,6 +29,8 @@ import HistoryIcon from '@mui/icons-material/History';
 import AddReactionIcon from '@mui/icons-material/AddReaction'; // 追加
 import { Message, HistoryContent } from './AiAssistant'; // AiAssistantと関連する型をインポート
 
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
+
 // App.tsxから渡されるHistoryItemの型を再利用
 interface HistoryItem {
   id?: number;
@@ -74,7 +76,7 @@ const ChatHistoryDisplay: React.FC<{ chatHistoryId?: number }> = ({ chatHistoryI
       }
 
       try {
-        const response = await fetch(`http://localhost:8000/api/history-contents/${chatHistoryId}`, {
+        const response = await fetch(`${API_BASE}/api/history-contents/${chatHistoryId}`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
 
@@ -192,7 +194,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
       return;
     }
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${summaryId}/comments`, {
+      const response = await fetch(`${API_BASE}/api/summaries/${summaryId}/comments`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -262,7 +264,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     const tagsArray = editingTags.split(',').map(t => t.trim()).filter(t => t);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${selectedHistory.id}/tags`, {
+      const response = await fetch(`${API_BASE}/api/summaries/${selectedHistory.id}/tags`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -305,7 +307,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summaries/${selectedHistory.id}/title`, {
+      const response = await fetch(`${API_BASE}/api/summaries/${selectedHistory.id}/title`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -344,7 +346,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/comments', {
+      const response = await fetch(`${API_BASE}/api/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -372,7 +374,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`${API_BASE}/api/comments/${commentId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -405,7 +407,7 @@ const SummaryHistory: React.FC<SummaryHistoryProps> = ({ histories, onHistoryCli
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/comments/${commentId}/reactions`, {
+      const response = await fetch(`${API_BASE}/api/comments/${commentId}/reactions`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

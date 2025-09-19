@@ -40,7 +40,7 @@ interface AiAssistantProps {
   viewMode: 'new' | 'history' | 'current'; // 再追加
   currentMessages: Message[];
   onMessagesChange: (messages: Message[]) => void;
-  currentPdfFilePaths?: string[];
+  currentPdfFilePaths?: number[]; // now array of SharedFile IDs
   username: string | null; // Add username prop
   authToken?: string | null; // NEW: Add authToken prop (allow null)
 }
@@ -77,7 +77,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, currentMessages, 
         requestBody.original_file_paths = currentPdfFilePaths;
       }
 
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,7 +102,7 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, currentMessages, 
         const category = userDisplayMessage.category || 'その他';
 
         try {
-          await fetch('http://localhost:8000/api/save-question-summary', {
+          await fetch(`${API_BASE}/api/save-question-summary`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -272,3 +272,4 @@ const AiAssistant = ({ pdfSummaryContent, summaryId, viewMode, currentMessages, 
 };
 
 export default AiAssistant;
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';

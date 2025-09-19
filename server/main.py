@@ -13,12 +13,12 @@ from google.genai import types
 import base64
 from sqlalchemy.orm import Session, joinedload
 from database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message, AiSummaryResponse
-from sqlalchemy import inspect, text
+# (SQLite-specific migration utilities removed)
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 import uuid
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 import re # 追加
 from starlette.concurrency import run_in_threadpool
 from collections import defaultdict
@@ -29,47 +29,22 @@ import torch # NEW: torchをインポート
 # Initialize SentenceTransformer model globally
 embedding_model = SentenceTransformer('all-mpnet-base-v2')
 
-# ファイル保存ディレクトリの設定
-UPLOAD_DIRECTORY = "./shared_files"
-
-# ディレクトリが存在しない場合は作成
-if not os.path.exists(UPLOAD_DIRECTORY):
-    os.makedirs(UPLOAD_DIRECTORY)
-    logging.info(f"Created upload directory: {UPLOAD_DIRECTORY}")
-
-def write_file_sync(path, content):
-    with open(path, "wb") as f:
-        f.write(content)
+# Files are stored in PostgreSQL (SharedFile.content); no local storage is used.
 
 # ログ設定
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI(title="Team 20 API", version="1.0.0")
 
-# データベーステーブルを作成
+# データベーステーブルを作成（初回起動時のみ作成）
 Base.metadata.create_all(bind=engine)
 
-# 既存DBの不足カラムを補完（SQLite向け簡易マイグレーション）
-try:
-    inspector = inspect(engine)
-    columns = [c['name'] for c in inspector.get_columns('summary_histories')]
-    if 'original_file_path' not in columns:
-        logging.info("Adding missing column 'original_file_path' to summary_histories table")
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN original_file_path STRING"))
-            conn.commit()
-    if 'chat_history_id' not in columns:
-        logging.info("Adding missing column 'chat_history_id' to summary_histories table")
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE summary_histories ADD COLUMN chat_history_id INTEGER"))
-            conn.commit()
-except Exception as e:
-    logging.warning(f"Failed to ensure DB schema for summary_histories: {e}")
-
 # CORS設定 - フロントエンドからのアクセスを許可
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Reactアプリのポート
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -617,36 +592,36 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
     client = genai.Client(api_key=API_KEY)
     try:
-        # summary_idが指定されていて、PDFファイルが存在する場合は直接参照
+        # summary_idが指定されていて、関連PDFをDBから参照する場合
         if request.summary_id:
             summary = db.query(SummaryHistory).filter(SummaryHistory.id == request.summary_id).first()
             if summary and summary.original_file_path:
                 logging.info(f"summary.original_file_path: {summary.original_file_path}")
                 try:
-                    # original_file_pathをJSON文字列からリストに変換
-                    file_paths = json.loads(summary.original_file_path)
-                    if not isinstance(file_paths, list): # 念のためリストであることを確認
-                        file_paths = [file_paths] # 単一のパスの場合もリストに変換
-                    logging.info(f"Deserialized file_paths: {file_paths}")
+                    # original_file_pathをJSON文字列からリストに変換（SharedFileのIDの配列を想定）
+                    file_ids = json.loads(summary.original_file_path)
+                    if not isinstance(file_ids, list):
+                        file_ids = [file_ids]
+                    logging.info(f"Deserialized file_ids: {file_ids}")
 
                     pdf_parts = []
-                    for file_path in file_paths:
-                        logging.info(f"Checking file_path: {file_path}")
-                        if os.path.exists(file_path):
-                            logging.info(f"File exists: {file_path}")
-                            with open(file_path, 'rb') as f:
-                                file_content = f.read()
-                            base64_content = await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8'))
-                            pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
-                            logging.info(f"Using PDF file directly: {file_path}")
-                        else:
-                            logging.warning(f"PDF file not found: {file_path}")
+                    for fid in file_ids:
+                        try:
+                            sf = db.query(SharedFile).filter(SharedFile.id == int(fid)).first()
+                            if sf and sf.content:
+                                base64_content = await run_in_threadpool(lambda: base64.b64encode(sf.content).decode('utf-8'))
+                                pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
+                                logging.info(f"Using PDF content from DB: file_id={fid}")
+                            else:
+                                logging.warning(f"SharedFile not found or empty content: file_id={fid}")
+                        except Exception as e:
+                            logging.warning(f"Failed to load SharedFile content for id={fid}: {e}")
 
-                    if pdf_parts: # PDFファイルが1つ以上存在する場合
+                    if pdf_parts:  # PDFファイルが1つ以上存在する場合
                         contents_parts = [
                             {'text': f"以下のPDFファイルの内容と要約を参考に質問に答えてください。より詳細な情報が必要な場合はPDFファイルの内容を優先してください。\n\n要約:\n{request.pdf_summary or summary.summary}\n\n質問:\n{request.message}"},
                         ]
-                        contents_parts.extend(pdf_parts) # PDFデータを追加
+                        contents_parts.extend(pdf_parts)  # PDFデータを追加
 
                         response = await client.aio.models.generate_content(
                             model='gemini-2.0-flash-001',
@@ -654,31 +629,31 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                                 {'parts': contents_parts}
                             ]
                         )
-                    
-                    if hasattr(response, 'text') and response.text:
-                        return {"reply": response.text}
-                    elif hasattr(response, 'candidates') and response.candidates:
-                        return {"reply": response.candidates[0].content.parts[0].text}
-                
+
+                        if hasattr(response, 'text') and response.text:
+                            return {"reply": response.text}
+                        elif hasattr(response, 'candidates') and response.candidates:
+                            return {"reply": response.candidates[0].content.parts[0].text}
+
                 except Exception as pdf_error:
                     logging.error(f"Error processing PDF file: {str(pdf_error)}")
                     # PDFファイルの読み込みに失敗した場合は要約のみで処理
-        elif request.original_file_paths: # 新しい条件: original_file_pathsが指定されている場合
+        elif request.original_file_paths: # original_file_paths が指定されている場合（SharedFileのIDの配列を想定）
             logging.info(f"request.original_file_paths: {request.original_file_paths}")
             try:
-                file_paths = request.original_file_paths
+                file_ids = request.original_file_paths
                 pdf_parts = []
-                for file_path in file_paths:
-                    logging.info(f"Checking file_path from request: {file_path}")
-                    if os.path.exists(file_path):
-                        logging.info(f"File exists: {file_path}")
-                        with open(file_path, 'rb') as f:
-                            file_content = f.read()
-                        base64_content = await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8'))
-                        pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
-                        logging.info(f"Using PDF file from request.original_file_paths: {file_path}")
-                    else:
-                        logging.warning(f"PDF file not found from request.original_file_paths: {file_path}")
+                for fid in file_ids:
+                    try:
+                        sf = db.query(SharedFile).filter(SharedFile.id == int(fid)).first()
+                        if sf and sf.content:
+                            base64_content = await run_in_threadpool(lambda: base64.b64encode(sf.content).decode('utf-8'))
+                            pdf_parts.append({'inline_data': {'mime_type': 'application/pdf', 'data': base64_content}})
+                            logging.info(f"Using PDF content from DB (request): file_id={fid}")
+                        else:
+                            logging.warning(f"SharedFile not found or empty content (request): file_id={fid}")
+                    except Exception as e:
+                        logging.warning(f"Failed to load SharedFile content for id={fid} from request: {e}")
 
                 if pdf_parts: # PDFファイルが1つ以上存在する場合
                     contents_parts = [
@@ -776,7 +751,7 @@ async def upload_pdf(
 
         all_base64_contents = []
         all_filenames = []
-        all_file_paths = []
+        file_ids = []
         
         for file in files:
             if not file.filename.lower().endswith('.pdf'):
@@ -790,14 +765,16 @@ async def upload_pdf(
             all_base64_contents.append(base64_content)
             all_filenames.append(file.filename)
 
-            # PDFファイルを保存（チャット時に参照するため）
-            unique_filename = f"{uuid.uuid4()}_{file.filename}"
-            file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-            
-            await run_in_threadpool(write_file_sync, file_path, file_content)
-            
-            logging.info(f"PDF file saved to: {file_path}")
-            all_file_paths.append(file_path)
+            # PDFファイルをDBに保存（チャット時に参照するため）
+            new_shared_file = SharedFile(
+                filename=file.filename,
+                content=file_content,
+                team_id=None,
+                uploaded_by_user_id=None
+            )
+            db.add(new_shared_file)
+            db.flush()
+            file_ids.append(new_shared_file.id)
         
         client = genai.Client(api_key=API_KEY)
         
@@ -840,7 +817,8 @@ async def upload_pdf(
             "summary": summary,
             "status": "success",
             "tags": generated_tags,
-            "file_path": all_file_paths  # 複数のファイルパスをリストで返す
+            # DBのファイルID一覧を返す
+            "file_path": file_ids
         }
         
     except HTTPException:
@@ -1400,18 +1378,9 @@ async def upload_shared_file(
         if len(file_content) > MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail=f"'{file.filename}': ファイルサイズが大きすぎます ({MAX_FILE_SIZE / (1024 * 1024):.0f}MB以下にしてください)")
 
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-
-        try:
-            await run_in_threadpool(write_file_sync, file_path, file_content)
-        except Exception as e:
-            logging.error(f"Error saving file '{file.filename}' to disk: {e}")
-            raise HTTPException(status_code=500, detail=f"ファイルの保存中にエラーが発生しました: {file.filename}")
-
         new_shared_file = SharedFile(
             filename=file.filename,
-            filepath=file_path,
+            content=file_content,
             team_id=team_id,
             uploaded_by_user_id=current_user.id
         )
@@ -1424,10 +1393,10 @@ async def upload_shared_file(
     # Summarization logic (similar to /api/upload-pdf)
     all_base64_contents = []
     for file_info in uploaded_files_info:
-        file_path = db.query(SharedFile).filter(SharedFile.id == file_info["file_id"]).first().filepath
-        with open(file_path, 'rb') as f:
-            file_content = f.read()
-        all_base64_contents.append(await run_in_threadpool(lambda: base64.b64encode(file_content).decode('utf-8')))
+        sf = db.query(SharedFile).filter(SharedFile.id == file_info["file_id"]).first()
+        if not sf or not sf.content:
+            continue
+        all_base64_contents.append(await run_in_threadpool(lambda: base64.b64encode(sf.content).decode('utf-8')))
 
     client = genai.Client(api_key=API_KEY)
     
@@ -1464,7 +1433,8 @@ async def upload_shared_file(
     
     # Save summary to SummaryHistory
     combined_filenames = ", ".join([f["filename"] for f in uploaded_files_info])
-    combined_file_paths = json.dumps([f.filepath for f in db.query(SharedFile).filter(SharedFile.id.in_([f["file_id"] for f in uploaded_files_info])).all()])
+    # Store related file IDs (as JSON string) in original_file_path field
+    combined_file_paths = json.dumps([f["file_id"] for f in uploaded_files_info])
 
     # チームメンバー全員の個人要約として保存
     team_members = db.query(TeamMember).filter(TeamMember.team_id == team_id).all()
@@ -1672,23 +1642,19 @@ async def download_shared_file(
     if not team_membership:
         raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
 
-    file_path = shared_file.filepath
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません (サーバー上)")
+    if not shared_file.content:
+        raise HTTPException(status_code=404, detail="ファイルコンテンツが見つかりません")
+    # Try to set a simple content type based on extension (fallback to octet-stream)
+    ext = os.path.splitext(shared_file.filename)[1].lower()
+    mime = "application/pdf" if ext == ".pdf" else (
+        "text/plain" if ext == ".txt" else (
+        "image/png" if ext == ".png" else (
+        "image/jpeg" if ext in [".jpg", ".jpeg"] else (
+        "image/gif" if ext == ".gif" else "application/octet-stream"))))
+    headers = {"Content-Disposition": f"attachment; filename=\"{shared_file.filename}\""}
+    return Response(content=shared_file.content, media_type=mime, headers=headers)
 
-    return FileResponse(path=file_path, filename=shared_file.filename, media_type="application/octet-stream")
-
-@app.get("/api/files/serve/{unique_filename}")
-async def serve_uploaded_file(unique_filename: str):
-    """アップロードされたファイルを直接提供するエンドポイント"""
-    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
-    # セキュリティ: UPLOAD_DIRECTORY内にあることを確認
-    if not os.path.abspath(file_path).startswith(os.path.abspath(UPLOAD_DIRECTORY)):
-        raise HTTPException(status_code=400, detail="不正なファイルパスです")
-    
-    return FileResponse(path=file_path, filename=unique_filename)
+## Removed: local file serving endpoint. Use /api/files/{file_id} instead.
 
 @app.post("/api/teams/{team_id}/messages", response_model=MessageResponse)
 async def send_message(

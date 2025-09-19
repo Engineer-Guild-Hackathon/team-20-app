@@ -8,27 +8,29 @@ import { ChevronLeft, ChevronRight, PictureAsPdf } from '@mui/icons-material';
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 
 interface PdfDocumentViewerProps {
-  pdfFilePath?: string[];
+  pdfFilePath?: number[]; // now contains SharedFile IDs
   filename?: string;
 }
+
+const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
 
 const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, filename }) => {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [httpHeaders, setHttpHeaders] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (pdfFilePath && pdfFilePath.length > 0) {
-      const fullPath = pdfFilePath[0];
-      const parts = fullPath.split(/[\\/]/); // Split by / or \\ to handle both Unix and Windows paths
-      const uniqueFilename = parts.pop(); // Get the last part
-      if (uniqueFilename) {
-        setPdfUrl(`http://localhost:8000/api/files/serve/${uniqueFilename}`);
-      } else {
-        setPdfUrl(null);
-      }
+    const token = localStorage.getItem('access_token');
+    const isLoggedIn = Boolean(token);
+    if (pdfFilePath && pdfFilePath.length > 0 && isLoggedIn) {
+      const fileId = pdfFilePath[0];
+      setPdfUrl(`${API_BASE}/api/files/${fileId}`);
+      if (token) setHttpHeaders({ Authorization: `Bearer ${token}` });
+      else setHttpHeaders({});
     } else {
       setPdfUrl(null);
+      setHttpHeaders({});
     }
   }, [pdfFilePath]);
 
@@ -74,7 +76,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
       <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
         {pdfUrl ? (
           <Document
-            file={pdfUrl}
+            file={pdfUrl ? { url: pdfUrl, httpHeaders } : undefined}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={<CircularProgress />}
             error={<Typography color="error">PDFの読み込みに失敗しました。</Typography>}
@@ -84,7 +86,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
           </Document>
         ) : (
           <Typography variant="body1" textAlign="center" color="text.secondary">
-            PDFファイルをアップロードしてください
+            PDFファイルを表示するにはログインが必要です
           </Typography>
         )}
       </Box>
