@@ -188,7 +188,7 @@ function App() {
   const [previousPdfFilename, setPreviousPdfFilename] = useState<string | undefined>(undefined);
   const [previousPdfSummaryId, setPreviousPdfSummaryId] = useState<number | undefined>(undefined);
   const [previousPdfTags, setPreviousPdfTags] = useState<string[] | undefined>(undefined);
-  const [previousPdfFilePath, setPreviousPdfFilePath] = useState<string[] | undefined>(undefined);
+  const [previousPdfFilePath, setPreviousPdfFilePath] = useState<number[] | undefined>(undefined);
   const [previousChatMessages, setPreviousChatMessages] = useState<Message[] | undefined>(undefined);
   const [previousViewMode, setPreviousViewMode] = useState<'new' | 'history' | 'current' | undefined>(undefined);
 
