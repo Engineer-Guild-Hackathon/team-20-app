@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import CytoscapeComponent from 'react-cytoscapejs';
-import { Box, CircularProgress, Typography, Paper, Button, List, ListItem } from '@mui/material';
+import { Box, CircularProgress, Typography, Paper, Button, List, ListItem, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { useAuth } from '../AuthContext';
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
@@ -13,7 +13,7 @@ cytoscape.use(fcose);
 interface GraphNode {
   id: string;
   label: string;
-  type: 'summary' | 'user_question' | 'category' | 'user_question_group'; // ai_messageはノードとして表示しない
+  type: 'summary' | 'user_question' | 'category' | 'user_question_group' | 'pdf_file'; // ai_messageはノードとして表示しない
   summary_id?: number;
   question_id?: string; // 質問ノード用
   ai_answer?: string; // 質問ノード用
@@ -48,12 +48,53 @@ const SummaryTreeGraph: React.FC = () => {
   const [isSummarized, setIsSummarized] = useState<boolean>(true); // NEW: 要約表示/元の回答表示を切り替えるstate
   const cyRef = useRef<cytoscape.Core | null>(null); // Cytoscape.js インスタンスを保存 (useRefを使用)
   const [expandedGroupNodes, setExpandedGroupNodes] = useState<{ [key: string]: boolean }>({}); // NEW: 展開状態を管理
+  const [teams, setTeams] = useState<any[]>([]); // NEW: ユーザーが所属するチームのリスト
+  const [selectedFilter, setSelectedFilter] = useState<{ type: 'personal' | 'team' | 'all', teamId?: number }>({ type: 'all' }); // NEW: 選択されたフィルター
+
+  const fetchTeams = useCallback(async () => {
+    if (!authToken) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/users/me/teams`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setTeams(data);
+    } catch (e: any) {
+      console.error("Failed to fetch teams:", e.message);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    if (authToken) {
+      fetchTeams();
+    }
+  }, [authToken, fetchTeams]);
 
   const fetchGraphData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/summary-tree-graph`, {
+      let url = `${API_BASE}/api/summary-tree-graph`;
+      const params = new URLSearchParams();
+
+      if (selectedFilter.type === 'personal') {
+        params.append('filter_type', 'personal');
+      } else if (selectedFilter.type === 'team' && selectedFilter.teamId) {
+        params.append('filter_type', 'team');
+        params.append('team_id', selectedFilter.teamId.toString());
+      }
+      // If selectedFilter.type is 'all', no params are added, which defaults to all accessible summaries
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
@@ -68,7 +109,7 @@ const SummaryTreeGraph: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [authToken]);
+  }, [authToken, selectedFilter]);
 
   useEffect(() => {
     if (authToken) {
@@ -94,16 +135,21 @@ const SummaryTreeGraph: React.FC = () => {
         let parentId = `summary_${node.parent_summary_id}`;
         let rootId = parentId; // Assume parent is root initially
 
+        // Helper function to check if a parent exists
+        const hasParentSummary = (pId: string) => graphData.nodes.some(n => n.id === pId && n.type === 'summary');
+        // Helper function to find a parent node
+        const findParentSummaryNode = (pId: string) => graphData.nodes.find(n => n.id === pId && n.type === 'summary');
+
         // Traverse up the parent chain to find the ultimate root
         let visited = new Set<string>(); // To prevent infinite loops in case of circular parent_summary_id references
-        while (parentId && graphData.nodes.some(n => n.id === parentId && n.type === 'summary')) {
+        while (parentId && hasParentSummary(parentId)) {
           if (visited.has(parentId)) {
             console.warn(`Circular parent_summary_id reference detected for ${node.id}`);
             break;
           }
           visited.add(parentId);
 
-          const parentNode = graphData.nodes.find(n => n.id === parentId && n.type === 'summary');
+          const parentNode = findParentSummaryNode(parentId);
           if (!parentNode) break; // Should not happen if some() check passed
 
           if (!parentNode.parent_summary_id) { // Found a root parent
@@ -119,7 +165,13 @@ const SummaryTreeGraph: React.FC = () => {
 
     // Initialize summary nodes with depth 0 (only root summaries)
     graphData.nodes.forEach(node => {
-      if (node.type === 'summary' && !node.parent_summary_id) { // Only add root summaries
+      if (node.type === 'pdf_file') { // NEW: PDFファイルノードの処理
+        depthMap.set(node.id, 0);
+        elementsWithDepth.push({
+          data: { ...node, depth: 0 },
+          classes: node.type,
+        });
+      } else if (node.type === 'summary' && !node.parent_summary_id) { // Only add root summaries
         depthMap.set(node.id, 0);
         elementsWithDepth.push({
           data: { ...node, depth: 0 },
@@ -173,6 +225,11 @@ const SummaryTreeGraph: React.FC = () => {
           elementsWithDepth.push({
             data: { source: effectiveSourceId, target: effectiveTargetId, type: 'similarity_link' },
             classes: 'similarity_link',
+          });
+        } else if (link.type === 'pdf_summary_link') { // NEW: PDFから要約へのリンク
+          elementsWithDepth.push({
+            data: { source: link.source, target: link.target, type: 'pdf_summary_link' },
+            classes: 'pdf_summary_link',
           });
         } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
           // Only create parent_summary_link if both the sourceNode and targetNode are root summaries
@@ -299,7 +356,7 @@ const SummaryTreeGraph: React.FC = () => {
         cyRef.current.destroy(); // cyRef.current を参照
       }
     };
-  }, [cyRef.current, processedElements, layout]); // 依存配列も cyRef.current に変更
+  }, [processedElements, layout]); // 依存配列も cyRef.current に変更
 
   const style = [
     {
@@ -326,6 +383,19 @@ const SummaryTreeGraph: React.FC = () => {
         'shadow-opacity': 0.5,
         'shape': 'ellipse', // すべてのノードを楕円形に
         'grabbable': false, // ノードを移動できないようにする
+      },
+    },
+    {
+      selector: '.pdf_file',
+      style: {
+        'background-color': '#f44336', // Red color for PDF files
+        'shape': 'rectangle', // PDFノードは四角形に
+        'font-size': '14px',
+        'text-max-width': '150px',
+        'width': 'mapData(label.length, 1, 50, 80, 200)', // Dynamic width based on label length
+        'height': 'mapData(label.length, 1, 50, 40, 80)',
+        'border-color': '#ef9a9a',
+        'shadow-color': '#f44336',
       },
     },
     {
@@ -384,6 +454,15 @@ const SummaryTreeGraph: React.FC = () => {
       style: {
         'line-color': '#888',
         'target-arrow-color': '#888',
+      },
+    },
+    {
+      selector: '.pdf_summary_link', // NEW: PDFから要約へのリンクスタイル
+      style: {
+        'line-color': '#f44336', // PDFノードの色に合わせる
+        'target-arrow-color': '#f44336',
+        'line-style': 'solid',
+        'width': 2,
       },
     },
     {
@@ -535,7 +614,45 @@ const SummaryTreeGraph: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', p: 2 }}>
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+        <FormControl sx={{ minWidth: 120 }} size="small">
+          <InputLabel id="graph-filter-label">表示フィルター</InputLabel>
+          <Select
+            labelId="graph-filter-label"
+            id="graph-filter-select"
+            value={selectedFilter.type}
+            label="表示フィルター"
+            onChange={(e) => {
+              const newFilterType = e.target.value as 'personal' | 'team' | 'all';
+              setSelectedFilter({ type: newFilterType });
+            }}
+          >
+            <MenuItem value="all">全て</MenuItem>
+            <MenuItem value="personal">個人</MenuItem>
+            <MenuItem value="team">チーム</MenuItem>
+          </Select>
+        </FormControl>
+
+        {selectedFilter.type === 'team' && (
+          <FormControl sx={{ minWidth: 180 }} size="small">
+            <InputLabel id="team-select-label">チームを選択</InputLabel>
+            <Select
+              labelId="team-select-label"
+              id="team-select"
+              value={selectedFilter.teamId || ''}
+              label="チームを選択"
+              onChange={(e) => {
+                setSelectedFilter({ type: 'team', teamId: Number(e.target.value) });
+              }}
+            >
+              {teams.map((team) => (
+                <MenuItem key={team.id} value={team.id}>{team.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+      </Box>
       <Box ref={containerRef} sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
         <CytoscapeComponent
           key="graph-component"
@@ -579,7 +696,12 @@ const SummaryTreeGraph: React.FC = () => {
               <strong>カテゴリ名:</strong> {selectedNode.label}
             </Typography>
           )}
-          {selectedNode.type !== 'category' && (
+          {selectedNode.type === 'pdf_file' && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>ファイル名:</strong> {selectedNode.label}
+            </Typography>
+          )}
+          {selectedNode.type !== 'category' && selectedNode.type !== 'pdf_file' && (
             <Typography variant="body2" sx={{ mt: 1 }}>
               <strong>内容:</strong> {selectedNode.label}
             </Typography>

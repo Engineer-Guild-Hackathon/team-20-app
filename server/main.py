@@ -11,12 +11,13 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 import base64
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 from database import Base, engine, SessionLocal, User, UserSession, SummaryHistory, Team, TeamMember, Comment, HistoryContent, SharedFile, Reaction, Message, AiSummaryResponse
 # (SQLite-specific migration utilities removed)
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Set
 import uuid
 from fastapi.responses import Response
 import re # 追加
@@ -341,7 +342,7 @@ class MessageResponse(BaseModel):
 class GraphNode(BaseModel):
     id: str
     label: str
-    type: str # 'summary', 'user_question'
+    type: str # 'summary', 'user_question', 'pdf_file', 'category'
     summary_id: Optional[int] = None # For chat messages, links back to the summary
     question_id: Optional[str] = None # For user question nodes, unique ID within the chat
     ai_answer: Optional[str] = None # For user question nodes, stores the AI's answer
@@ -354,6 +355,7 @@ class GraphNode(BaseModel):
     original_summary_id: Optional[int] = None # NEW FIELD: 質問が紐づく元の要約ID
     grouped_question_ids: Optional[List[str]] = None # NEW FIELD: 統合された質問ノードのIDリスト
     original_questions_details: Optional[List[Dict[str, Any]]] = None # NEW FIELD: 統合された質問の詳細
+    file_id: Optional[int] = None # NEW FIELD: For PDF file nodes
 
 
 class GraphLink(BaseModel):
@@ -1785,18 +1787,75 @@ async def get_messages(
 @app.get("/api/summary-tree-graph", response_model=GraphData)
 async def get_summary_tree_graph(
     current_user: User = Depends(get_required_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    team_id: Optional[int] = None,  # Optional team ID for filtering
+    filter_type: Optional[str] = None # "personal" or "team"
 ):
     """
-    ユーザーの要約履歴とそれに関連するAIチャット履歴をネットワークグラフ形式で取得するエンドポイント。
+    ユーザーの要約履歴とそれに関連するAIチャット履歴、および関連PDFファイルをネットワークグラフ形式で取得するエンドポイント。
     """
     nodes: List[GraphNode] = []
     links: List[GraphLink] = []
     
-    # ユーザー自身の要約履歴を取得
-    summaries = db.query(SummaryHistory).filter(
-        SummaryHistory.user_id == current_user.id
-    ).order_by(SummaryHistory.created_at.desc()).all()
+    # summaries_queryを初期化
+    summaries_query = db.query(SummaryHistory)
+
+    # filter_type と team_id に基づいて要約クエリを修正
+    if filter_type == "personal":
+        summaries_query = summaries_query.filter(
+            SummaryHistory.user_id == current_user.id,
+            SummaryHistory.team_id == None
+        )
+    elif filter_type == "team" and team_id is not None:
+        # ユーザーが指定されたチームのメンバーであることを確認
+        team_membership = db.query(TeamMember).filter(
+            TeamMember.user_id == current_user.id,
+            TeamMember.team_id == team_id
+        ).first()
+        if not team_membership:
+            raise HTTPException(status_code=403, detail="You are not a member of this team.")
+        
+        summaries_query = summaries_query.filter(
+            SummaryHistory.team_id == team_id
+        )
+    else: # デフォルトの動作: ユーザーがアクセスできるすべての要約を表示（個人用 + 所属するすべてのチーム）
+        user_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(TeamMember.user_id == current_user.id).all()]
+        summaries_query = summaries_query.filter(
+            or_(
+                SummaryHistory.user_id == current_user.id,
+                SummaryHistory.team_id.in_(user_team_ids)
+            )
+        )
+    
+    summaries = summaries_query.order_by(SummaryHistory.created_at.desc()).all()
+
+    # 関連するSharedFileのIDを収集
+    referenced_file_ids = set()
+    for summary in summaries:
+        if summary.original_file_path:
+            try:
+                file_ids = json.loads(summary.original_file_path)
+                for fid in file_ids:
+                    referenced_file_ids.add(int(fid))
+            except (json.JSONDecodeError, ValueError) as e:
+                logging.warning(f"Failed to parse original_file_path for summary {summary.id}: {e}")
+
+    # 参照されているSharedFileを取得
+    shared_files_map: Dict[int, SharedFile] = {}
+    if referenced_file_ids:
+        shared_files = db.query(SharedFile).filter(SharedFile.id.in_(list(referenced_file_ids))).all()
+        for sf in shared_files:
+            shared_files_map[sf.id] = sf
+
+    # PDFファイルノードを作成
+    for file_id, sf in shared_files_map.items():
+        pdf_node_id = f"pdf_{sf.id}"
+        nodes.append(GraphNode(
+            id=pdf_node_id,
+            label=sf.filename,
+            type="pdf_file",
+            file_id=sf.id
+        ))
 
     for summary in summaries:
         summary_node_id = f"summary_{summary.id}"
@@ -1814,6 +1873,17 @@ async def get_summary_tree_graph(
             parent_summary_id=summary.parent_summary_id,
             summary_created_at=created_at_utc # NEW FIELD: summary_created_at を追加
         ))
+
+        # PDFファイルから要約へのリンクを追加
+        if summary.original_file_path:
+            try:
+                file_ids = json.loads(summary.original_file_path)
+                for fid in file_ids:
+                    if int(fid) in shared_files_map:
+                        pdf_node_id = f"pdf_{int(fid)}"
+                        links.append(GraphLink(source=pdf_node_id, target=summary_node_id, type="pdf_summary_link"))
+            except (json.JSONDecodeError, ValueError) as e:
+                logging.warning(f"Failed to parse original_file_path for summary {summary.id} when creating PDF links: {e}")
 
         # 親要約へのリンクを追加
         if summary.parent_summary_id:

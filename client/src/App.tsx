@@ -89,7 +89,6 @@ function App() {
   const [pdfFilePath, setPdfFilePath] = useState<number[]>([]);
   const [summaryHistories, setSummaryHistories] = useState<HistoryItem[]>([]);
   const [viewMode, setViewMode] = useState<'new' | 'history' | 'current'>('new');
-  const [historicalContents, setHistoricalContents] = useState<HistoryContent[] | undefined>(undefined);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
@@ -363,7 +362,6 @@ function App() {
     setPdfFilePath([]);
     setSummaryHistories([]);
     setViewMode('new');
-    setHistoricalContents(undefined);
     setChatMessages([]);
     setSelectedTeamId('');
 
@@ -385,7 +383,6 @@ function App() {
     setPdfFilePath([]);
     setChatMessages([]);
     setViewMode('new');
-    setHistoricalContents(undefined);
     setSelectedTeamId('');
 
     // 履歴モードの一時保存ステートも初期化
@@ -408,7 +405,7 @@ function App() {
       console.error('Failed to clear session data:', e);
     }
     showSnackbar('作業内容をクリアしました。', 'info');
-  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setHistoricalContents, setSelectedTeamId, showSnackbar,
+  }, [setPdfSummary, setPdfFilename, setPdfSummaryId, setPdfTags, setPdfFilePath, setChatMessages, setViewMode, setSelectedTeamId, showSnackbar,
       setPreviousPdfSummary, setPreviousPdfFilename, setPreviousPdfSummaryId, setPreviousPdfTags, setPreviousPdfFilePath, setPreviousChatMessages, setPreviousViewMode]);
 
   const handleClearWorkspace = useCallback(() => {
@@ -438,7 +435,6 @@ function App() {
     setPdfFilePath(filePath || []);
     setChatMessages([]); // Clear chat messages for new summary
     setViewMode('new'); // Set view mode to new
-    setHistoricalContents(undefined); // Clear historical contents
 
     // The summary is already saved by the server-side /api/teams/{team_id}/files endpoint
     // We just need to update the UI state with the summaryId returned from the server.
@@ -470,7 +466,6 @@ function App() {
 
     // 新規モードに設定
     setViewMode('new');
-    setHistoricalContents(undefined);
     setChatMessages([]);
     // チャットメッセージのみクリア
     try {
@@ -543,7 +538,6 @@ function App() {
 
       // 現在のチャットモードに切り替え
       setViewMode('history'); // 履歴表示モードに設定
-      setHistoricalContents(data.contents); // 履歴コンテンツをセット
 
       navigate('/');
     } catch (error) {
