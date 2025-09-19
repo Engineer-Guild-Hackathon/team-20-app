@@ -24,12 +24,8 @@ RUN pip install --upgrade pip && \
 # Copy application
 COPY . .
 
-# Pre-download and cache the model to reduce cold starts
-RUN python - << 'PY'
-from sentence_transformers import SentenceTransformer
-SentenceTransformer('all-mpnet-base-v2')
-print('Model cached')
-PY
+# Pre-download and cache the model to reduce cold starts (avoid heredoc for broad Docker compatibility)
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-mpnet-base-v2'); print('Model cached')"
 
 EXPOSE 8080
 
