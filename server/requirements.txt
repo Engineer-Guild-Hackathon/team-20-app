@@ -51,3 +51,4 @@ sentence-transformers
 SQLAlchemy
 python-jose[cryptography]
 psycopg2-binary
+torch

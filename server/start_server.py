@@ -11,4 +11,6 @@ if __name__ == "__main__":
     logging.info(f"Starting Uvicorn with {num_workers} workers (half of CPU cores).")
     
     # main.py の app オブジェクトを直接参照
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, workers=num_workers)
+    # Use PORT env var if provided (Cloud Run/other envs); default to 8000 for local
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True, workers=num_workers)

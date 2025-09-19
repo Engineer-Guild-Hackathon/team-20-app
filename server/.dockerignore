@@ -1,0 +1,14 @@
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+.cache
+.git
+*.sqlite
+*.db
+*.ipynb_checkpoints
+node_modules
+../client
+../node_modules
