@@ -1657,18 +1657,29 @@ async def download_shared_file(
     current_user: User = Depends(get_required_user),
     db: Session = Depends(get_db)
 ):
-    """共有ファイルをダウンロードするエンドポイント"""
+    """共有ファイルをダウンロードするエンドポイント。
+    チームに紐づくファイルはチームメンバーのみ許可。
+    チーム未紐づけ(None)のファイルは、アップロード者が設定されていれば本人のみ、
+    未設定(None)なら認証済みユーザーであれば許可（個人作業フローの利便性優先）。
+    """
     shared_file = db.query(SharedFile).filter(SharedFile.id == file_id).first()
     if not shared_file:
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")
 
-    # ユーザーがファイルが共有されているチームのメンバーであることを確認
-    team_membership = db.query(TeamMember).filter(
-        TeamMember.user_id == current_user.id,
-        TeamMember.team_id == shared_file.team_id
-    ).first()
-    if not team_membership:
-        raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+    # アクセス許可判定
+    if shared_file.team_id is None:
+        # 個人用（または匿名アップロード）ファイル
+        if shared_file.uploaded_by_user_id is not None and shared_file.uploaded_by_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
+        # uploaded_by_user_id が None の場合は、認証済みユーザーであれば許可
+    else:
+        # チームに紐づく場合はメンバーシップ必須
+        team_membership = db.query(TeamMember).filter(
+            TeamMember.user_id == current_user.id,
+            TeamMember.team_id == shared_file.team_id
+        ).first()
+        if not team_membership:
+            raise HTTPException(status_code=403, detail="このファイルをダウンロードする権限がありません")
 
     if not shared_file.content:
         raise HTTPException(status_code=404, detail="ファイルコンテンツが見つかりません")
@@ -1768,7 +1779,7 @@ async def get_summary_tree_graph(
     db: Session = Depends(get_db)
 ):
     """
-    ユーザーの要約履歴とそれに関連するAIチャット履歴をツリーグラフ形式で取得するエンドポイント。
+    ユーザーの要約履歴とそれに関連するAIチャット履歴をネットワークグラフ形式で取得するエンドポイント。
     """
     nodes: List[GraphNode] = []
     links: List[GraphLink] = []

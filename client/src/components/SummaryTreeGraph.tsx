@@ -77,6 +77,8 @@ const SummaryTreeGraph: React.FC = () => {
   }, [authToken, fetchGraphData]);
 
   const [processedElements, setProcessedElements] = useState<any[]>([]);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const relayoutTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!graphData) return;
@@ -194,30 +196,83 @@ const SummaryTreeGraph: React.FC = () => {
     setProcessedElements(elementsWithDepth);
   }, [graphData]);
 
-  const layout = React.useMemo(() => ({
-    name: 'fcose',
-    quality: 'proof', // 'draft', 'default', 'proof'
-    animate: true, // アニメーションを有効にする
-    animationDuration: 300, // アニメーション時間を短縮
-    animationEasing: 'ease-out', // easing of animation if enabled
-    fit: true, // グラフ全体がビューポートに収まるように自動調整
-    padding: 50, // the padding on the sides of the graph
-    nodeDimensionsIncludeLabels: true, // whether to include labels in node dimensions
-    tile: true, // whether to enable tiling
-    tilingPaddingVertical: 20, // vertical padding for tiling (少し増やす)
-    tilingPaddingHorizontal: 20, // horizontal padding for tiling (少し増やす)
-    gravity: 0.5, // gravity force (constant) for all nodes (少し強める)
-    numIter: 2500, // maximum number of iterations to perform
-    idealEdgeLength: 120, // ideal (user-specified) edge length (少し長くする)
-    edgeElasticity: 0.45, // elasticity constant for the edge force
-    nestingFactor: 0.2, // nesting factor (multiplier) for the inter-graph force (少し強める)
-    gravityRange: 3.8, // range of the gravity force
-    gravityCompound: 1.0, // gravity force (constant) for compound nodes
-    gravityRoot: 1.0, // gravity force (constant) for the highest level compound nodes
-    initialEnergyOnIncremental: 0.3, // initial energy on incremental layout
-    // for incremental layouts
-    incremental: true, // whether to enable incremental layout
-  }), []);
+  // Decide layout dynamically based on graph size/content
+  const computeLayout = useCallback((nodeCount: number) => {
+    if (nodeCount > 120) {
+      // For large graphs, use dagre (layered) to reduce overlaps and edge crossings
+      return {
+        name: 'dagre',
+        rankDir: 'LR',
+        fit: true,
+        padding: 50,
+        rankSep: 120,
+        nodeSep: 40,
+        edgeSep: 20,
+        animate: true,
+        animationDuration: 300,
+      } as any;
+    }
+    // Default: fcose with stronger repulsion and tiling to avoid overlaps
+    return {
+      name: 'fcose',
+      quality: 'proof',
+      animate: true,
+      animationDuration: 300,
+      animationEasing: 'ease-out',
+      fit: true,
+      padding: 50,
+      nodeDimensionsIncludeLabels: true,
+      tile: true,
+      tilingPaddingVertical: 24,
+      tilingPaddingHorizontal: 24,
+      gravity: 0.25,
+      numIter: 3000,
+      nodeRepulsion: 45000,
+      idealEdgeLength: 140,
+      edgeElasticity: 0.45,
+      nestingFactor: 0.8,
+      incremental: true,
+    } as any;
+  }, []);
+
+  const runAutoLayout = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const nodeCount = cy.nodes().length;
+    const layout = computeLayout(nodeCount);
+    cy.layout(layout).run();
+    // After layout, ensure content fits viewport with some padding
+    cy.fit(undefined, 40);
+  }, [computeLayout]);
+
+  // Re-run layout when processed elements change
+  useEffect(() => {
+    if (!cyRef.current) return;
+    if (relayoutTimerRef.current) {
+      window.clearTimeout(relayoutTimerRef.current);
+    }
+    relayoutTimerRef.current = window.setTimeout(() => {
+      runAutoLayout();
+    }, 150);
+  }, [processedElements, runAutoLayout]);
+
+  // Re-run layout and fit on container resize
+  useEffect(() => {
+    const el = containerRef.current;
+    const cy = cyRef.current;
+    if (!el || !cy) return;
+    const ro = new ResizeObserver(() => {
+      cy.resize();
+      if (relayoutTimerRef.current) window.clearTimeout(relayoutTimerRef.current);
+      relayoutTimerRef.current = window.setTimeout(() => {
+        runAutoLayout();
+      }, 120);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [runAutoLayout]);
+
+  const layout = React.useMemo(() => computeLayout(processedElements.length || 0), [computeLayout, processedElements.length]);
 
   useEffect(() => {
     if (!cyRef.current) return; // cyRef.currentがnullの場合は何もしない
@@ -481,7 +536,7 @@ const SummaryTreeGraph: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2 }}>
-      <Box sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
+      <Box ref={containerRef} sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
         <CytoscapeComponent
           key="graph-component"
           elements={processedElements}
@@ -497,6 +552,18 @@ const SummaryTreeGraph: React.FC = () => {
             }
 
             cyInstance.on('tap', 'node', handleNodeClick);
+
+            // Re-layout on add/remove/data changes with debounce
+            const scheduleRelayout = () => {
+              if (relayoutTimerRef.current) window.clearTimeout(relayoutTimerRef.current);
+              relayoutTimerRef.current = window.setTimeout(() => {
+                runAutoLayout();
+              }, 100);
+            };
+            cyInstance.on('add remove data', scheduleRelayout);
+
+            // Initial layout after mount
+            runAutoLayout();
             cyRef.current = cyInstance; // cyRef.current にインスタンスを保存
           }}
           style={{ width: '100%', height: '100%' }}

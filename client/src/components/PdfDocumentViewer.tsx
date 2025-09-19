@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import { Box, Typography, IconButton, CircularProgress, Paper } from '@mui/material';
+import { Box, Typography, IconButton, CircularProgress, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { ChevronLeft, ChevronRight, PictureAsPdf } from '@mui/icons-material';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
@@ -18,6 +18,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
 
   useEffect(() => {
     let revokeUrl: string | null = null;
@@ -25,7 +26,8 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
       const token = localStorage.getItem('access_token');
       const isLoggedIn = Boolean(token);
       if (pdfFilePath && pdfFilePath.length > 0 && isLoggedIn) {
-        const fileId = pdfFilePath[0];
+        const safeIndex = Math.min(Math.max(selectedFileIndex, 0), pdfFilePath.length - 1);
+        const fileId = pdfFilePath[safeIndex];
         try {
           const resp = await fetch(`${API_BASE}/api/files/${fileId}`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -35,6 +37,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
           const objUrl = URL.createObjectURL(blob);
           revokeUrl = objUrl;
           setPdfUrl(objUrl);
+          setPageNumber(1);
         } catch (e) {
           console.error('Failed to load PDF:', e);
           setPdfUrl(null);
@@ -47,7 +50,24 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
     return () => {
       if (revokeUrl) URL.revokeObjectURL(revokeUrl);
     };
-  }, [pdfFilePath]);
+  }, [pdfFilePath, selectedFileIndex]);
+
+  // Reset selected file index when the file list changes
+  useEffect(() => {
+    setSelectedFileIndex(0);
+  }, [JSON.stringify(pdfFilePath)]);
+
+  const displayNames: string[] = React.useMemo(() => {
+    if (!filename) return [];
+    return filename.split(',').map((s) => s.trim()).filter(Boolean);
+  }, [filename]);
+
+  const currentDisplayName = React.useMemo(() => {
+    if (displayNames.length > 0) {
+      return displayNames[Math.min(selectedFileIndex, displayNames.length - 1)] || filename || undefined;
+    }
+    return filename;
+  }, [displayNames, selectedFileIndex, filename]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -81,10 +101,27 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
       </Box>
 
       {filename && (
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <Typography variant="subtitle2" color="text.secondary">
-            {filename}
+            {currentDisplayName}
           </Typography>
+          {pdfFilePath && pdfFilePath.length > 1 && (
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel id="pdf-file-selector-label">PDFファイル</InputLabel>
+              <Select
+                labelId="pdf-file-selector-label"
+                value={selectedFileIndex}
+                label="PDFファイル"
+                onChange={(e) => setSelectedFileIndex(Number(e.target.value))}
+              >
+                {pdfFilePath.map((id, idx) => (
+                  <MenuItem key={id} value={idx}>
+                    {displayNames[idx] || `File ${idx + 1}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
         </Box>
       )}
 

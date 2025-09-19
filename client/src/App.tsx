@@ -857,7 +857,7 @@ function App() {
                   [
                     <MenuItem key="mypage" component={Link} to="/mypage" onClick={handleCloseMenu}>マイページ</MenuItem>,
                     <MenuItem key="team-management" component={Link} to="/teams" onClick={handleCloseMenu}>チーム管理</MenuItem>,
-                    <MenuItem key="tree-graph" component={Link} to="/tree-graph" onClick={handleCloseMenu}>ツリーグラフ</MenuItem>,
+                    <MenuItem key="tree-graph" component={Link} to="/tree-graph" onClick={handleCloseMenu}>ネットワークーグラフ</MenuItem>,
                     <MenuItem key="logout" onClick={handleLogout}>ログアウト</MenuItem>
                   ]
                 ) : (
