@@ -4,6 +4,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { Box, Typography, IconButton, CircularProgress, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import { ChevronLeft, ChevronRight, PictureAsPdf } from '@mui/icons-material';
+import { useAuth } from '../AuthContext'; // Import useAuth
 
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 
@@ -15,6 +16,9 @@ interface PdfDocumentViewerProps {
 const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
 
 const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, filename }) => {
+  const { authToken } = useAuth(); // Use authToken from AuthContext
+  const isLoggedIn = Boolean(authToken); // Derive isLoggedIn from authToken
+
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -23,14 +27,12 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   useEffect(() => {
     let revokeUrl: string | null = null;
     const loadPdf = async () => {
-      const token = localStorage.getItem('access_token');
-      const isLoggedIn = Boolean(token);
       if (pdfFilePath && pdfFilePath.length > 0 && isLoggedIn) {
         const safeIndex = Math.min(Math.max(selectedFileIndex, 0), pdfFilePath.length - 1);
         const fileId = pdfFilePath[safeIndex];
         try {
           const resp = await fetch(`${API_BASE}/api/files/${fileId}`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
           });
           if (!resp.ok) throw new Error('Failed to fetch PDF');
           const blob = await resp.blob();
@@ -50,7 +52,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
     return () => {
       if (revokeUrl) URL.revokeObjectURL(revokeUrl);
     };
-  }, [pdfFilePath, selectedFileIndex]);
+  }, [pdfFilePath, selectedFileIndex, authToken, isLoggedIn]); // Add authToken and isLoggedIn to dependencies
 
   // Reset selected file index when the file list changes
   useEffect(() => {
