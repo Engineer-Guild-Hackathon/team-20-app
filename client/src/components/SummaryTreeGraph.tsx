@@ -609,7 +609,7 @@ const SummaryTreeGraph: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2 }}>
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2, flexWrap: 'nowrap' }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pr: 2 }}>
         <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
         <FormControl sx={{ minWidth: 120 }} size="small">
@@ -621,7 +621,11 @@ const SummaryTreeGraph: React.FC = () => {
             label="表示フィルター"
             onChange={(e) => {
               const newFilterType = e.target.value as 'personal' | 'team' | 'all';
-              setSelectedFilter({ type: newFilterType });
+              if (newFilterType === 'team' && teams.length > 0) {
+                setSelectedFilter({ type: newFilterType, teamId: teams[0].id });
+              } else {
+                setSelectedFilter({ type: newFilterType });
+              }
             }}
           >
             <MenuItem value="all">全て</MenuItem>
