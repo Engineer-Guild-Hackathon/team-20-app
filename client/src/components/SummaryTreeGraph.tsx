@@ -311,22 +311,35 @@ const SummaryTreeGraph: React.FC = () => {
     relayoutTimerRef.current = window.setTimeout(() => {
       runAutoLayout();
     }, 150);
+
+    return () => {
+      if (relayoutTimerRef.current) {
+        window.clearTimeout(relayoutTimerRef.current);
+      }
+    };
   }, [processedElements, runAutoLayout]);
 
   // Re-run layout and fit on container resize
   useEffect(() => {
     const el = containerRef.current;
-    const cy = cyRef.current;
-    if (!el || !cy) return;
+    if (!el) return;
+
     const ro = new ResizeObserver(() => {
-      cy.resize();
-      if (relayoutTimerRef.current) window.clearTimeout(relayoutTimerRef.current);
-      relayoutTimerRef.current = window.setTimeout(() => {
-        runAutoLayout();
-      }, 120);
+      if (cyRef.current) {
+        cyRef.current.resize();
+        if (relayoutTimerRef.current) window.clearTimeout(relayoutTimerRef.current);
+        relayoutTimerRef.current = window.setTimeout(() => {
+          runAutoLayout();
+        }, 120);
+      }
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (relayoutTimerRef.current) {
+        window.clearTimeout(relayoutTimerRef.current);
+      }
+    };
   }, [runAutoLayout]);
 
   const layout = React.useMemo(() => computeLayout(processedElements.length || 0), [computeLayout, processedElements.length]);
@@ -611,50 +624,50 @@ const SummaryTreeGraph: React.FC = () => {
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2, flexWrap: 'nowrap' }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pr: 2 }}>
-        <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-        <FormControl sx={{ minWidth: 120 }} size="small">
-          <InputLabel id="graph-filter-label">表示フィルター</InputLabel>
-          <Select
-            labelId="graph-filter-label"
-            id="graph-filter-select"
-            value={selectedFilter.type}
-            label="表示フィルター"
-            onChange={(e) => {
-              const newFilterType = e.target.value as 'personal' | 'team' | 'all';
-              if (newFilterType === 'team' && teams.length > 0) {
-                setSelectedFilter({ type: newFilterType, teamId: teams[0].id });
-              } else {
-                setSelectedFilter({ type: newFilterType });
-              }
-            }}
-          >
-            <MenuItem value="all">全て</MenuItem>
-            <MenuItem value="personal">個人</MenuItem>
-            <MenuItem value="team">チーム</MenuItem>
-          </Select>
-        </FormControl>
+        <Box ref={containerRef} sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+          <Box sx={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 2, alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.8)', p: 1, borderRadius: '4px' }}>
+            <FormControl sx={{ minWidth: 120 }} size="small">
+              <InputLabel id="graph-filter-label">表示フィルター</InputLabel>
+              <Select
+                labelId="graph-filter-label"
+                id="graph-filter-select"
+                value={selectedFilter.type}
+                label="表示フィルター"
+                onChange={(e) => {
+                  const newFilterType = e.target.value as 'personal' | 'team' | 'all';
+                  if (newFilterType === 'team' && teams.length > 0) {
+                    setSelectedFilter({ type: newFilterType, teamId: teams[0].id });
+                  } else {
+                    setSelectedFilter({ type: newFilterType });
+                  }
+                }}
+              >
+                <MenuItem value="all">全て</MenuItem>
+                <MenuItem value="personal">個人</MenuItem>
+                <MenuItem value="team">チーム</MenuItem>
+              </Select>
+            </FormControl>
 
-        {selectedFilter.type === 'team' && (
-          <FormControl sx={{ minWidth: 180 }} size="small">
-            <InputLabel id="team-select-label">チームを選択</InputLabel>
-            <Select
-              labelId="team-select-label"
-              id="team-select"
-              value={selectedFilter.teamId || ''}
-              label="チームを選択"
-              onChange={(e) => {
-                setSelectedFilter({ type: 'team', teamId: Number(e.target.value) });
-              }}
-            >
-              {teams.map((team) => (
-                <MenuItem key={team.id} value={team.id}>{team.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-      </Box>
-      <Box ref={containerRef} sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
-        <CytoscapeComponent
+            {selectedFilter.type === 'team' && (
+              <FormControl sx={{ minWidth: 180 }} size="small">
+                <InputLabel id="team-select-label">チームを選択</InputLabel>
+                <Select
+                  labelId="team-select-label"
+                  id="team-select"
+                  value={selectedFilter.teamId || ''}
+                  label="チームを選択"
+                  onChange={(e) => {
+                    setSelectedFilter({ type: 'team', teamId: Number(e.target.value) });
+                  }}
+                >
+                  {teams.map((team) => (
+                    <MenuItem key={team.id} value={team.id}>{team.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </Box>
+          <CytoscapeComponent
           key={`graph-component-${selectedFilter.type}-${selectedFilter.teamId || ''}`}
 
           elements={processedElements}
@@ -745,7 +758,7 @@ const SummaryTreeGraph: React.FC = () => {
               <Typography variant="subtitle2">統合された質問:</Typography>
               <List dense>
                 {selectedNode.original_questions_details.map((originalQuestion, index) => (
-                  <ListItem key={index} sx={{ flexDirection: 'column', alignItems: 'flex-start', mb: 1 }}>
+                  <ListItem key={index} sx={{ flexDirection: 'row', alignItems: 'flex-start', mb: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                       質問: {originalQuestion.label}
                     </Typography>
