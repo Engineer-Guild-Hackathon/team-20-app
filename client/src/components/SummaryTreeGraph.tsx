@@ -24,7 +24,7 @@ interface GraphNode {
   category?: string; // NEW FIELD: Add category to GraphNode
   original_summary_id?: number; // NEW FIELD: 質問が紐づく元の要約ID
   grouped_question_ids?: string[]; // NEW FIELD: 統合された質問ノードのIDリスト
-  original_questions_details?: { id: string; label: string; question_id?: string }[]; // NEW FIELD: 統合された質問の詳細
+  original_questions_details?: { id: string; label: string; question_id?: string; ai_answer?: string; ai_answer_summary?: string }[]; // NEW FIELD: 統合された質問の詳細
 }
 
 interface GraphLink {
@@ -631,9 +631,11 @@ const SummaryTreeGraph: React.FC = () => {
                         <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
                           AIの回答:
                         </Typography>
-                        <ReactMarkdown className="markdown-content">
-                          {originalQuestion.ai_answer_summary || originalQuestion.ai_answer}
-                        </ReactMarkdown>
+                        <Box className="markdown-content">
+                          <ReactMarkdown>
+                            {originalQuestion.ai_answer_summary || originalQuestion.ai_answer}
+                          </ReactMarkdown>
+                        </Box>
                       </Box>
                     )}
                   </ListItem>
