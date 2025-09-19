@@ -79,7 +79,7 @@ interface SessionState {
 }
 
 function App() {
-  const { authToken } = useAuth(); // NEW: authTokenを取得
+  const { authToken, setAuthToken } = useAuth(); // NEW: setAuthTokenを取得
   const location = useLocation();
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
@@ -202,12 +202,14 @@ function App() {
           const data = await response.json();
           setIsLoggedIn(true);
           setUsername(data.username);
+          setAuthToken(token); // NEW: Update AuthContext's authToken
           loadSession(); // ログイン成功時にセッションをロード
         } else {
           // トークンが無効な場合はログアウト状態にする
           localStorage.removeItem('access_token');
           setIsLoggedIn(false);
           setUsername(null);
+          setAuthToken(null); // NEW: Clear AuthContext's authToken
           showSnackbar('セッションの有効期限が切れました。再度ログインしてください。', 'warning');
         }
       } catch (error) {
@@ -215,12 +217,14 @@ function App() {
         localStorage.removeItem('access_token');
         setIsLoggedIn(false);
         setUsername(null);
+        setAuthToken(null); // NEW: Clear AuthContext's authToken
       }
     } else {
       setIsLoggedIn(false);
       setUsername(null);
+      setAuthToken(null); // NEW: Clear AuthContext's authToken
     }
-  }, [showSnackbar, loadSession]);
+  }, [showSnackbar, loadSession, setAuthToken]);
 
   useEffect(() => {
     checkAuth();
@@ -920,8 +924,14 @@ function App() {
           <Route path="/tree-graph" element={<SummaryTreeGraph />} />
         </Routes>
       </Box>
-      <LoginModal open={isLoginModalOpen} onClose={handleCloseLoginModal} showSnackbar={showSnackbar} />
-      <RegisterModal open={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} />
+      <LoginModal open={isLoginModalOpen} onClose={handleCloseLoginModal} showSnackbar={showSnackbar} setAuthToken={setAuthToken} />
+      <RegisterModal
+        open={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
+        onLoginSuccess={checkAuth} // Pass checkAuth as onLoginSuccess
+        showSnackbar={showSnackbar} // Pass the showSnackbar function
+        setAuthToken={setAuthToken} // Pass setAuthToken directly
+      />
       <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleCloseSnackbar}>
         <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
           {snackbarMessage}

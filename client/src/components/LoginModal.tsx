@@ -13,9 +13,10 @@ interface LoginModalProps {
   open: boolean;
   onClose: () => void;
   showSnackbar: (message: string, severity: 'success' | 'error' | 'info' | 'warning') => void;
+  setAuthToken: (token: string | null) => void; // NEW: Add setAuthToken
 }
 
-const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) => {
+const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar, setAuthToken }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -40,7 +41,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
 
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem('access_token', data.access_token);
+        localStorage.removeItem('access_token'); // Remove old token if any
+        setAuthToken(data.access_token); // Use setAuthToken to update AuthContext and localStorage
         showSnackbar('ログインに成功しました！', 'success'); // Call showSnackbar
         setErrorMessage(''); // Clear any previous error
         onClose(); // ログイン成功時にモーダルを閉じる
@@ -78,6 +80,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
             setUsername(e.target.value);
             setErrorMessage(''); // Clear error on input change
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleLogin();
+            }
+          }}
         />
         <TextField
           margin="dense"
@@ -89,6 +96,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
           onChange={(e) => {
             setPassword(e.target.value);
             setErrorMessage(''); // Clear error on input change
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleLogin();
+            }
           }}
         />
         {errorMessage && (

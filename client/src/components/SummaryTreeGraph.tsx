@@ -609,8 +609,9 @@ const SummaryTreeGraph: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', p: 2 }}>
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pr: 2 }}>
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
         <FormControl sx={{ minWidth: 120 }} size="small">
           <InputLabel id="graph-filter-label">表示フィルター</InputLabel>
           <Select
@@ -650,7 +651,8 @@ const SummaryTreeGraph: React.FC = () => {
       </Box>
       <Box ref={containerRef} sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
         <CytoscapeComponent
-          key="graph-component"
+          key={`graph-component-${selectedFilter.type}-${selectedFilter.teamId || ''}`}
+
           elements={processedElements}
           stylesheet={style}
           layout={layout}
@@ -682,7 +684,7 @@ const SummaryTreeGraph: React.FC = () => {
         />
       </Box>
       {selectedNode && (
-        <Paper elevation={3} sx={{ width: 300, ml: 2, p: 2, overflowY: 'auto' }}>
+        <Paper elevation={3} sx={{ width: 300, p: 2, overflowY: 'auto', flexShrink: 0 }}>
           <Typography variant="h6" gutterBottom>ノード詳細</Typography>
           <Typography variant="subtitle1">ID: {selectedNode.id}</Typography>
           <Typography variant="subtitle1">タイプ: {selectedNode.type}</Typography>
@@ -788,8 +790,8 @@ const SummaryTreeGraph: React.FC = () => {
         </Paper>
       )}
     </Box>
-  );
-};
+  </Box>
+)};
 
 export default SummaryTreeGraph;
 const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
