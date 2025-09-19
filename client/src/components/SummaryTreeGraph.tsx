@@ -51,6 +51,12 @@ const SummaryTreeGraph: React.FC = () => {
   const [teams, setTeams] = useState<any[]>([]); // NEW: ユーザーが所属するチームのリスト
   const [selectedFilter, setSelectedFilter] = useState<{ type: 'personal' | 'team' | 'all', teamId?: number }>({ type: 'all' }); // NEW: 選択されたフィルター
 
+  useEffect(() => {
+    return () => {
+      cyRef.current = null;
+    };
+  }, []);
+
   const fetchTeams = useCallback(async () => {
     if (!authToken) return;
     try {
@@ -520,7 +526,7 @@ const SummaryTreeGraph: React.FC = () => {
       },
     },
   ];
-
+  
   const handleNodeClick = useCallback((event: any) => { // useCallback でラップ
     const node = event.target;
     if (node.isNode()) {
@@ -596,6 +602,30 @@ const SummaryTreeGraph: React.FC = () => {
     }
   }, [expandedGroupNodes, layout]); // 依存配列に expandedGroupNodes と layout を追加
 
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    // イベントリスナーを登録
+    cy.on('tap', 'node', handleNodeClick);
+    const scheduleRelayout = () => {
+      if (relayoutTimerRef.current) window.clearTimeout(relayoutTimerRef.current);
+      relayoutTimerRef.current = window.setTimeout(() => {
+        runAutoLayout();
+      }, 100);
+    };
+    cy.on('add remove data', scheduleRelayout);
+
+    // クリーンアップ関数でリスナーを解除
+    return () => {
+      cy.removeListener('tap', 'node', handleNodeClick);
+      cy.removeListener('add remove data', scheduleRelayout);
+      if (relayoutTimerRef.current) {
+        window.clearTimeout(relayoutTimerRef.current);
+      }
+    };
+  }, [handleNodeClick, runAutoLayout]); // 依存配列にコールバック関数を含める
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -623,9 +653,9 @@ const SummaryTreeGraph: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2, flexWrap: 'nowrap' }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pr: 2 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'row', flexGrow: 1, pr: 2 }}>
         <Box ref={containerRef} sx={{ flexGrow: 1, border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
-          <Box sx={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 2, alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.8)', p: 1, borderRadius: '4px' }}>
+          <Box sx={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 2, alignItems: 'center', p: 1, borderRadius: '4px' }}>
             <FormControl sx={{ minWidth: 120 }} size="small">
               <InputLabel id="graph-filter-label">表示フィルター</InputLabel>
               <Select
@@ -676,26 +706,11 @@ const SummaryTreeGraph: React.FC = () => {
           cy={(cyInstance) => {
             if (!cyInstance) return; // cyInstanceがnullの場合は何もしない
 
-            // 既存のイベントリスナーを削除してから新しいものを追加
-            // これにより、ホットリロードなどで複数回イベントリスナーが登録されるのを防ぐ
-            if (cyRef.current) { // cyRef.current を参照
-              cyRef.current.removeListener('tap', 'node', handleNodeClick);
-            }
-
-            cyInstance.on('tap', 'node', handleNodeClick);
-
-            // Re-layout on add/remove/data changes with debounce
-            const scheduleRelayout = () => {
-              if (relayoutTimerRef.current) window.clearTimeout(relayoutTimerRef.current);
-              relayoutTimerRef.current = window.setTimeout(() => {
-                runAutoLayout();
-              }, 100);
-            };
-            cyInstance.on('add remove data', scheduleRelayout);
+            // まず、cyRef.currentを新しいインスタンスに更新
+            cyRef.current = cyInstance;
 
             // Initial layout after mount
             runAutoLayout();
-            cyRef.current = cyInstance; // cyRef.current にインスタンスを保存
           }}
           style={{ width: '100%', height: '100%' }}
         />

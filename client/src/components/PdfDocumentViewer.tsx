@@ -17,7 +17,7 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
 
 const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, filename }) => {
   const { authToken } = useAuth(); // Use authToken from AuthContext
-  const isLoggedIn = Boolean(authToken); // Derive isLoggedIn from authToken
+  const isLoggedIn = React.useMemo(() => Boolean(authToken), [authToken]); // Derive isLoggedIn from authToken
 
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
@@ -25,6 +25,8 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
+
+  const memoizedPdfFilePath = React.useMemo(() => pdfFilePath, [pdfFilePath]);
 
   useEffect(() => {
     let revokeUrl: string | null = null;
@@ -39,9 +41,9 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
     window.addEventListener('resize', updateWidth);
 
     const loadPdf = async () => {
-      if (pdfFilePath && pdfFilePath.length > 0) {
-        const safeIndex = Math.min(Math.max(selectedFileIndex, 0), pdfFilePath.length - 1);
-        const fileId = pdfFilePath[safeIndex];
+      if (memoizedPdfFilePath && memoizedPdfFilePath.length > 0) {
+        const safeIndex = Math.min(Math.max(selectedFileIndex, 0), memoizedPdfFilePath.length - 1);
+        const fileId = memoizedPdfFilePath[safeIndex];
         try {
           const resp = await fetch(`${API_BASE}/api/files/${fileId}`, {
             headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
@@ -65,7 +67,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
       if (revokeUrl) URL.revokeObjectURL(revokeUrl);
       window.removeEventListener('resize', updateWidth);
     };
-  }, [pdfFilePath, selectedFileIndex, authToken, isLoggedIn]); // Add authToken and isLoggedIn to dependencies
+  }, [memoizedPdfFilePath, selectedFileIndex, authToken, isLoggedIn]);
 
   // Reset selected file index when the file list changes
   useEffect(() => {
