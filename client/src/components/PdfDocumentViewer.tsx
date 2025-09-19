@@ -18,20 +18,35 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [httpHeaders, setHttpHeaders] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    const isLoggedIn = Boolean(token);
-    if (pdfFilePath && pdfFilePath.length > 0 && isLoggedIn) {
-      const fileId = pdfFilePath[0];
-      setPdfUrl(`${API_BASE}/api/files/${fileId}`);
-      if (token) setHttpHeaders({ Authorization: `Bearer ${token}` });
-      else setHttpHeaders({});
-    } else {
-      setPdfUrl(null);
-      setHttpHeaders({});
-    }
+    let revokeUrl: string | null = null;
+    const loadPdf = async () => {
+      const token = localStorage.getItem('access_token');
+      const isLoggedIn = Boolean(token);
+      if (pdfFilePath && pdfFilePath.length > 0 && isLoggedIn) {
+        const fileId = pdfFilePath[0];
+        try {
+          const resp = await fetch(`${API_BASE}/api/files/${fileId}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (!resp.ok) throw new Error('Failed to fetch PDF');
+          const blob = await resp.blob();
+          const objUrl = URL.createObjectURL(blob);
+          revokeUrl = objUrl;
+          setPdfUrl(objUrl);
+        } catch (e) {
+          console.error('Failed to load PDF:', e);
+          setPdfUrl(null);
+        }
+      } else {
+        setPdfUrl(null);
+      }
+    };
+    loadPdf();
+    return () => {
+      if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+    };
   }, [pdfFilePath]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -76,7 +91,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
       <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
         {pdfUrl ? (
           <Document
-            file={pdfUrl ? { url: pdfUrl, httpHeaders } : undefined}
+            file={pdfUrl || undefined}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={<CircularProgress />}
             error={<Typography color="error">PDFの読み込みに失敗しました。</Typography>}
