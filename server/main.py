@@ -41,14 +41,31 @@ Base.metadata.create_all(bind=engine)
 
 # CORS設定 - フロントエンドからのアクセスを許可
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origin_regex = os.getenv("ALLOWED_ORIGINS_REGEX", "").strip()
 allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+# Helpful debug logs
+logging.info(f"CORS: ALLOWED_ORIGINS={allowed_origins}")
+if allowed_origin_regex:
+    logging.info(f"CORS: ALLOWED_ORIGINS_REGEX={allowed_origin_regex}")
+
+if allowed_origin_regex:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[],
+        allow_origin_regex=allowed_origin_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ログミドルウェア
 @app.middleware("http")
