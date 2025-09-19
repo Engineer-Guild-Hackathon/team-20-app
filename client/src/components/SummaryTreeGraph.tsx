@@ -25,6 +25,7 @@ interface GraphNode {
   original_summary_id?: number; // NEW FIELD: 質問が紐づく元の要約ID
   grouped_question_ids?: string[]; // NEW FIELD: 統合された質問ノードのIDリスト
   original_questions_details?: { id: string; label: string; question_id?: string; ai_answer?: string; ai_answer_summary?: string }[]; // NEW FIELD: 統合された質問の詳細
+  username?: string; // NEW FIELD: 質問ノード用に追加
 }
 
 interface GraphLink {
@@ -131,82 +132,125 @@ const SummaryTreeGraph: React.FC = () => {
     if (!graphData) return;
 
     const elementsWithDepth: any[] = [];
-    const depthMap = new Map<string, number>();
-    const childToRootSummaryMap = new Map<string, string>(); // Maps child summary ID to root summary ID
+    const nodeToUltimateRootMap = new Map<string, string>(); // Maps node ID to its ultimate root ID (pdf_file or root summary)
+    const nodeToDepthMap = new Map<string, number>(); // Maps node ID to its calculated depth
+    const directParentMap = new Map<string, string>(); // Maps child ID to its direct parent ID (summary or pdf_file)
 
-    // Build the childToRootSummaryMap
+    // First pass: Identify PDF roots and direct parent-child relationships
     graphData.nodes.forEach(node => {
-      if (node.type === 'summary' && node.parent_summary_id) {
-        let currentSummaryId = node.id;
-        let parentId = `summary_${node.parent_summary_id}`;
-        let rootId = parentId; // Assume parent is root initially
+      if (node.type === 'pdf_file') {
+        nodeToUltimateRootMap.set(node.id, node.id); // PDF files are their own ultimate root
+        nodeToDepthMap.set(node.id, 0); // PDF files are at depth 0
+      }
+    });
 
-        // Helper function to check if a parent exists
-        const hasParentSummary = (pId: string) => graphData.nodes.some(n => n.id === pId && n.type === 'summary');
-        // Helper function to find a parent node
-        const findParentSummaryNode = (pId: string) => graphData.nodes.find(n => n.id === pId && n.type === 'summary');
+    graphData.links.forEach(link => {
+      if (link.type === 'pdf_summary_link') {
+        directParentMap.set(link.target, link.source); // Summary linked to PDF
+      } else if (link.type === 'parent_summary_link') {
+        directParentMap.set(link.target, link.source); // Child summary linked to parent summary
+      }
+    });
 
-        // Traverse up the parent chain to find the ultimate root
-        let visited = new Set<string>(); // To prevent infinite loops in case of circular parent_summary_id references
-        while (parentId && hasParentSummary(parentId)) {
-          if (visited.has(parentId)) {
-            console.warn(`Circular parent_summary_id reference detected for ${node.id}`);
-            break;
+    // Second pass: Trace ultimate roots for all summary nodes
+    graphData.nodes.forEach(node => {
+      if (node.type === 'summary') {
+        let currentId: string | undefined = node.id;
+        let path: string[] = []; // To detect cycles
+        let ultimateRootId: string | undefined = undefined;
+
+        // Try to find an already established ultimate root (e.g., a PDF file)
+        if (nodeToUltimateRootMap.has(currentId)) {
+          ultimateRootId = nodeToUltimateRootMap.get(currentId);
+        } else {
+          // Traverse up the parent chain
+          while (currentId && !nodeToUltimateRootMap.has(currentId) && !path.includes(currentId)) {
+            path.push(currentId);
+            const parentId = directParentMap.get(currentId);
+            if (parentId) {
+              currentId = parentId;
+            } else {
+              // No parent found, this summary is a root itself
+              ultimateRootId = node.id;
+              break;
+            }
           }
-          visited.add(parentId);
 
-          const parentNode = findParentSummaryNode(parentId);
-          if (!parentNode) break; // Should not happen if some() check passed
-
-          if (!parentNode.parent_summary_id) { // Found a root parent
-            rootId = parentId;
-            break;
-          } else {
-            parentId = `summary_${parentNode.parent_summary_id}`;
+          if (currentId && nodeToUltimateRootMap.has(currentId)) {
+            ultimateRootId = nodeToUltimateRootMap.get(currentId);
+          } else if (currentId && !ultimateRootId) {
+            // If we reached a node that was already processed as an ultimate root
+            ultimateRootId = currentId;
           }
         }
-        childToRootSummaryMap.set(currentSummaryId, rootId);
+
+        if (ultimateRootId) {
+          nodeToUltimateRootMap.set(node.id, ultimateRootId);
+        } else {
+          // Fallback: if no ultimate root found, the summary itself is the root
+          nodeToUltimateRootMap.set(node.id, node.id);
+        }
       }
     });
 
-    // Initialize summary nodes with depth 0 (only root summaries)
+    // Third pass: Calculate depths for all nodes based on their ultimate root or direct parent
     graphData.nodes.forEach(node => {
-      if (node.type === 'pdf_file') { // NEW: PDFファイルノードの処理
-        depthMap.set(node.id, 0);
-        elementsWithDepth.push({
-          data: { ...node, depth: 0 },
-          classes: node.type,
-        });
-      } else if (node.type === 'summary' && !node.parent_summary_id) { // Only add root summaries
-        depthMap.set(node.id, 0);
-        elementsWithDepth.push({
-          data: { ...node, depth: 0 },
-          classes: node.type,
-        });
+      if (node.type === 'pdf_file') {
+        nodeToDepthMap.set(node.id, 0);
+      } else if (node.type === 'summary') {
+        let currentId = node.id;
+        let depth = 0;
+        let path: string[] = []; // To detect cycles
+
+        while (currentId && nodeToUltimateRootMap.get(currentId) !== currentId && !path.includes(currentId)) {
+          path.push(currentId);
+          const parentId = directParentMap.get(currentId);
+          if (parentId) {
+            currentId = parentId;
+            depth++;
+          } else {
+            break;
+          }
+        }
+        nodeToDepthMap.set(node.id, depth);
       }
+      // For category, user_question, user_question_group, their depth will be relative to their direct parent summary/category
+      // We will set a default depth for them if their parent's depth is not yet calculated or they are standalone
     });
 
-    // Add category and question nodes with calculated depth
+    // Now, construct elementsWithDepth using the calculated depths
     graphData.nodes.forEach(node => {
+      let depth = nodeToDepthMap.get(node.id);
+
       if (node.type === 'category') {
-        const depth = depthMap.get(node.id) || 1; // Default to 1 if not found
-        elementsWithDepth.push({
-          data: { ...node, depth: depth },
-          classes: node.type,
-        });
-      } else if (node.type === 'user_question') {
-        const depth = depthMap.get(node.id) || 2; // Default to 2 if not found
-        elementsWithDepth.push({
-          data: { ...node, depth: depth },
-          classes: `${node.type} ${node.category ? `category-${node.category}` : ''}`, // カテゴリクラスを追加
-        });
-      } else if (node.type === 'user_question_group') { // NEW: 統合された質問ノードの処理
-        const depth = depthMap.get(node.id) || 2; // user_question と同じ深さ
-        elementsWithDepth.push({
-          data: { ...node, depth: depth, locked: true }, // locked: true を追加
-          classes: `${node.type} ${node.category ? `category-${node.category}` : ''}`, // カテゴリクラスを追加
-        });
+        // Find its parent summary to determine its depth
+        const parentSummaryLink = graphData.links.find(link => link.target === node.id && link.type === 'summary_category_link');
+        if (parentSummaryLink && nodeToDepthMap.has(parentSummaryLink.source)) {
+          depth = nodeToDepthMap.get(parentSummaryLink.source)! + 1;
+        } else {
+          depth = depth === undefined ? 1 : depth; // Default to 1 if no parent or depth not set
+        }
+      } else if (node.type === 'user_question' || node.type === 'user_question_group') {
+        // Find its parent category or summary to determine its depth
+        const parentLink = graphData.links.find(link => link.target === node.id && (link.type === 'category_question_link' || link.type === 'summary_question_link'));
+        if (parentLink && nodeToDepthMap.has(parentLink.source)) {
+          depth = nodeToDepthMap.get(parentLink.source)! + 1;
+        } else {
+          depth = depth === undefined ? 2 : depth; // Default to 2 if no parent or depth not set
+        }
+      } else if (depth === undefined) {
+        depth = 0; // Default for any other unhandled node types
       }
+
+      let nodeLabel = node.label;
+      if ((node.type === 'user_question' || node.type === 'user_question_group') && node.username) {
+        nodeLabel = `${node.username}: ${node.label}`;
+      }
+
+      elementsWithDepth.push({
+        data: { ...node, depth: depth, label: nodeLabel },
+        classes: node.type,
+      });
     });
 
     // Add links
@@ -215,41 +259,37 @@ const SummaryTreeGraph: React.FC = () => {
       const targetNode = graphData.nodes.find(n => n.id === link.target);
       try {
         if (sourceNode?.type === 'summary' && targetNode?.type === 'category') {
-          const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
           elementsWithDepth.push({
-            data: { source: effectiveSourceId, target: link.target, type: 'summary_category_link' },
+            data: { source: link.source, target: link.target, type: 'summary_category_link' },
             classes: 'summary_category_link',
           });
-        } else if (sourceNode?.type === 'category' && (targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group')) { // NEW: 統合された質問ノードへのリンクも処理
+        } else if (sourceNode?.type === 'category' && (targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group')) {
           elementsWithDepth.push({
             data: { source: link.source, target: link.target, type: 'category_question_link' },
             classes: 'category_question_link',
           });
-        } else if (link.type === 'similarity_link') { // NEW: 類似度リンクを追加
-          const effectiveSourceId = childToRootSummaryMap.get(link.source) || link.source;
-          const effectiveTargetId = childToRootSummaryMap.get(link.target) || link.target;
+        } else if (link.type === 'similarity_link') {
+          const effectiveSourceId = nodeToUltimateRootMap.get(link.source) || link.source;
+          const effectiveTargetId = nodeToUltimateRootMap.get(link.target) || link.target;
           elementsWithDepth.push({
             data: { source: effectiveSourceId, target: effectiveTargetId, type: 'similarity_link' },
             classes: 'similarity_link',
           });
-        } else if (link.type === 'pdf_summary_link') { // NEW: PDFから要約へのリンク
+        } else if (link.type === 'pdf_summary_link') {
           elementsWithDepth.push({
             data: { source: link.source, target: link.target, type: 'pdf_summary_link' },
             classes: 'pdf_summary_link',
           });
         } else if (sourceNode?.type === 'summary' && targetNode?.type === 'summary') {
-          // Only create parent_summary_link if both the sourceNode and targetNode are root summaries
-          if (!sourceNode.parent_summary_id && !targetNode.parent_summary_id) {
-            elementsWithDepth.push({
-              data: { source: link.source, target: link.target, type: 'parent_summary_link' },
-              classes: 'parent_summary_link',
-            });
-          }
-        } else if ((targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group') && targetNode.original_summary_id) { // 質問ノードがoriginal_summary_idを持つ場合
-          const originalSummaryId = `summary_${targetNode.original_summary_id}`;
-          const effectiveSourceId = childToRootSummaryMap.get(originalSummaryId) || originalSummaryId;
+          // Create parent_summary_link for all direct summary parent-child relationships
           elementsWithDepth.push({
-            data: { source: effectiveSourceId, target: link.target, type: 'summary_question_link' },
+            data: { source: link.source, target: link.target, type: 'parent_summary_link' },
+            classes: 'parent_summary_link',
+          });
+        } else if ((targetNode?.type === 'user_question' || targetNode?.type === 'user_question_group') && targetNode.original_summary_id) {
+          const originalSummaryId = `summary_${targetNode.original_summary_id}`;
+          elementsWithDepth.push({
+            data: { source: originalSummaryId, target: link.target, type: 'summary_question_link' },
             classes: 'summary_question_link',
           });
         }
@@ -561,10 +601,14 @@ const SummaryTreeGraph: React.FC = () => {
           nodeData.original_questions_details?.forEach((originalQuestion: any) => {
             const safeOriginalQuestionId = originalQuestion.id.replace(/[^a-zA-Z0-9-_]/g, '_'); // 英数字、ハイフン、アンダースコア以外をアンダースコアに置換
             const childNodeId = `child_question_${nodeData.id}_${safeOriginalQuestionId}`;
+            let childNodeLabel = originalQuestion.label;
+            if (originalQuestion.username) { // Assuming originalQuestion also has a username
+              childNodeLabel = `${originalQuestion.username}: ${originalQuestion.label}`;
+            }
             newElements.push({
               data: {
                 id: childNodeId,
-                label: originalQuestion.label,
+                label: childNodeLabel,
                 type: 'user_question', // 子ノードはuser_questionタイプ
                 summary_id: nodeData.summary_id,
                 question_id: originalQuestion.question_id,
@@ -573,6 +617,7 @@ const SummaryTreeGraph: React.FC = () => {
                 category: nodeData.category,
                 parent_group_id: nodeData.id, // 親グループノードのIDを保持
                 locked: true, // NEW: 子ノードも固定する
+                username: originalQuestion.username, // Pass username to child node
               },
               classes: 'user_question',
             });
@@ -697,6 +742,27 @@ const SummaryTreeGraph: React.FC = () => {
               </FormControl>
             )}
           </Box>
+
+          {/* NEW: Legend */}
+          <Paper elevation={3} sx={{ position: 'absolute', bottom: 16, left: 16, zIndex: 10, p: 1, borderRadius: '4px', backgroundColor: 'rgba(255, 255, 255, 0.8)' }}>
+            <Typography variant="subtitle2" gutterBottom>凡例</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Box sx={{ width: 12, height: 12, backgroundColor: '#f44336', borderRadius: '2px', mr: 1 }} />
+              <Typography variant="body2">PDFファイル</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Box sx={{ width: 12, height: 12, backgroundColor: '#00bcd4', borderRadius: '2px', mr: 1 }} />
+              <Typography variant="body2">要約</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Box sx={{ width: 12, height: 12, backgroundColor: '#4caf50', borderRadius: '2px', mr: 1 }} />
+              <Typography variant="body2">質問</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ width: 12, height: 12, backgroundColor: '#ff9800', borderRadius: '2px', mr: 1 }} />
+              <Typography variant="body2">統合された質問</Typography>
+            </Box>
+          </Paper>
           <CytoscapeComponent
           key={`graph-component-${selectedFilter.type}-${selectedFilter.teamId || ''}`}
 

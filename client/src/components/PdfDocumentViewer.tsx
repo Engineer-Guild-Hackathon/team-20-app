@@ -3,7 +3,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { Box, Typography, IconButton, CircularProgress, Paper, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
-import { ChevronLeft, ChevronRight, PictureAsPdf } from '@mui/icons-material';
+import { ChevronLeft, ChevronRight, PictureAsPdf, Add, Remove } from '@mui/icons-material';
 import { useAuth } from '../AuthContext'; // Import useAuth
 
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
@@ -25,6 +25,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
+  const [scale, setScale] = useState<number>(1.0); // NEW: PDFズームスケール
 
   const memoizedPdfFilePath = React.useMemo(() => pdfFilePath, [pdfFilePath]);
 
@@ -151,7 +152,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
             error={<Typography color="error">PDFの読み込みに失敗しました。</Typography>}
             noData={<Typography>PDFファイルがありません。</Typography>}
           >
-            <Page pageNumber={pageNumber} width={containerWidth} /> {/* Adjust width as needed */}
+            <Page pageNumber={pageNumber} scale={scale} />
           </Document>
         ) : (
           <Typography variant="body1" textAlign="center" color="text.secondary">
@@ -161,7 +162,7 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
       </Box>
 
       {pdfUrl && numPages && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 2, gap: 2 }}>
           <IconButton onClick={goToPrevPage} disabled={pageNumber <= 1}>
             <ChevronLeft />
           </IconButton>
@@ -170,6 +171,17 @@ const PdfDocumentViewer: React.FC<PdfDocumentViewerProps> = ({ pdfFilePath, file
           </Typography>
           <IconButton onClick={goToNextPage} disabled={pageNumber >= (numPages || 1)}>
             <ChevronRight />
+          </IconButton>
+
+          {/* NEW: Zoom Controls */}
+          <IconButton onClick={() => setScale(prev => Math.max(0.5, prev - 0.1))} disabled={scale <= 0.5}>
+            <Remove />
+          </IconButton>
+          <Typography variant="body2">
+            {Math.round(scale * 100)}%
+          </Typography>
+          <IconButton onClick={() => setScale(prev => Math.min(3.0, prev + 0.1))} disabled={scale >= 3.0}>
+            <Add />
           </IconButton>
         </Box>
       )}
