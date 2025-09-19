@@ -838,6 +838,8 @@ async def upload_pdf(
             # 要約からタグ部分を削除
             summary = re.sub(r'\[タグ:\s*(.*?)\s*\]', '', full_response_text).strip()
         
+        db.commit() # ここにdb.commit()を追加します
+
         return {
             "filename": ", ".join(all_filenames), # 複数のファイル名を結合
             "summary": summary,
