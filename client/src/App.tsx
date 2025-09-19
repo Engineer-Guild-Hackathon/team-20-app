@@ -79,7 +79,7 @@ interface SessionState {
 }
 
 function App() {
-  const { authToken, setAuthToken, isLoggedIn } = useAuth(); // Use isLoggedIn from AuthContext
+  const { authToken } = useAuth(); // NEW: authTokenを取得
   const location = useLocation();
   const [pdfSummary, setPdfSummary] = useState<string>('');
   const [pdfFilename, setPdfFilename] = useState<string>('');
@@ -94,7 +94,7 @@ function App() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const openMenu = Boolean(anchorEl);
-
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [username, setUsername] = useState<string | null>(null);
   const [myTeams, setMyTeams] = useState<Team[]>([]); // New
   const [selectedTeamId, setSelectedTeamId] = useState<number | '' | '個人用'>(''); // New
@@ -200,31 +200,27 @@ function App() {
         });
         if (response.ok) {
           const data = await response.json();
-          // setIsLoggedIn(true); // REMOVED
+          setIsLoggedIn(true);
           setUsername(data.username);
-          setAuthToken(token); // NEW: Update AuthContext's authToken
           loadSession(); // ログイン成功時にセッションをロード
         } else {
           // トークンが無効な場合はログアウト状態にする
           localStorage.removeItem('access_token');
-          // setIsLoggedIn(false); // REMOVED
+          setIsLoggedIn(false);
           setUsername(null);
-          setAuthToken(null); // NEW: Clear AuthContext's authToken
           showSnackbar('セッションの有効期限が切れました。再度ログインしてください。', 'warning');
         }
       } catch (error) {
         console.error('Error checking auth:', error);
         localStorage.removeItem('access_token');
-        // setIsLoggedIn(false); // REMOVED
+        setIsLoggedIn(false);
         setUsername(null);
-        setAuthToken(null); // NEW: Clear AuthContext's authToken
       }
     } else {
-      // setIsLoggedIn(false); // REMOVED
+      setIsLoggedIn(false);
       setUsername(null);
-      setAuthToken(null); // NEW: Clear AuthContext's authToken
     }
-  }, [showSnackbar, loadSession, setAuthToken]);
+  }, [showSnackbar, loadSession]);
 
   useEffect(() => {
     checkAuth();
@@ -241,7 +237,8 @@ function App() {
   // New useEffect for fetching teams
   useEffect(() => {
     const fetchMyTeams = async () => {
-      if (!authToken) {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
         setMyTeams([]);
         return;
       }
@@ -249,7 +246,7 @@ function App() {
       try {
         const response = await fetch(`${API_BASE}/api/users/me/teams`, {
           headers: {
-            'Authorization': `Bearer ${authToken}`,
+            'Authorization': `Bearer ${token}`,
           },
         });
 
@@ -266,18 +263,23 @@ function App() {
       }
     };
 
-    fetchMyTeams();
-  }, [authToken]);
+    if (isLoggedIn) {
+      fetchMyTeams();
+    } else {
+      setMyTeams([]); // ログアウト時はチームをクリア
+    }
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const fetchUserInfo = async () => {
-      if (!authToken) {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
         setUsername(null);
         return;
       }
       try {
         const response = await fetch(`${API_BASE}/api/users/me`, {
-          headers: { 'Authorization': `Bearer ${authToken}` },
+          headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
           const data = await response.json();
@@ -292,34 +294,38 @@ function App() {
       }
     };
 
-    fetchUserInfo();
-  }, [authToken]);
+    if (isLoggedIn) {
+      fetchUserInfo();
+    } else {
+      setUsername(null); // ログアウト時はユーザー名をクリア
+    }
+  }, [isLoggedIn]);
 
   const fetchHistories = useCallback(async () => {
-    if (!authToken) {
-      setSummaryHistories([]);
-      return;
-    }
-    try {
-      const response = await fetch(`${API_BASE}/api/summaries`, {
-        headers: { 'Authorization': `Bearer ${authToken}` },
-      });
-      if (response.ok) {
-        const data: HistoryItem[] = await response.json();
-        setSummaryHistories(data);
-      } else {
-        console.error('Failed to fetch summary histories');
+    if (isLoggedIn) {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      try {
+        const response = await fetch(`${API_BASE}/api/summaries`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data: HistoryItem[] = await response.json();
+          setSummaryHistories(data);
+        } else {
+          console.error('Failed to fetch summary histories');
+          setSummaryHistories([]);
+        }
+      } catch (error) {
+        console.error('Error fetching summary histories:', error);
         setSummaryHistories([]);
       }
-    } catch (error) {
-      console.error('Error fetching summary histories:', error);
-      setSummaryHistories([]);
     }
-  }, [authToken, setSummaryHistories]);
+  }, [isLoggedIn, setSummaryHistories]);
 
   useEffect(() => {
     fetchHistories();
-  }, [fetchHistories]);
+  }, [isLoggedIn, fetchHistories]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
   const handleCloseMenu = () => setAnchorEl(null);
@@ -331,7 +337,7 @@ function App() {
 
   const handleLogout = () => {
     saveSession(); // ログアウト前にセッションを保存
-    setAuthToken(null); // NEW: Clear AuthContext's authToken
+    localStorage.removeItem('access_token');
     handleCloseMenu();
     checkAuth(); // 認証状態を再チェック
     showSnackbar('ログアウトしました。', 'info');
@@ -605,7 +611,8 @@ function App() {
       setIsLoginModalOpen(true);
       return undefined; // Return undefined on failure
     }
-    if (!authToken) return undefined; // Use authToken directly
+    const token = localStorage.getItem('access_token');
+    if (!token) return undefined; // Return undefined on failure
 
     setIsSaving(true); // 保存開始
 
@@ -620,7 +627,7 @@ function App() {
     if (currentUsername === null) {
       try {
         const response = await fetch(`${API_BASE}/api/users/me`, {
-          headers: { 'Authorization': `Bearer ${authToken}` }, // Use authToken
+          headers: { 'Authorization': `Bearer ${token}` },
         });
         if (response.ok) {
           const data = await response.json();
@@ -638,7 +645,7 @@ function App() {
       // 1. 要約を保存して、新しいIDを取得
       const summaryResponse = await fetch(`${API_BASE}/api/save-summary`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, // Use authToken
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             filename,
             summary,
@@ -913,14 +920,8 @@ function App() {
           <Route path="/tree-graph" element={<SummaryTreeGraph />} />
         </Routes>
       </Box>
-      <LoginModal open={isLoginModalOpen} onClose={handleCloseLoginModal} showSnackbar={showSnackbar} setAuthToken={setAuthToken} />
-      <RegisterModal
-        open={isRegisterModalOpen}
-        onClose={() => setIsRegisterModalOpen(false)}
-        onLoginSuccess={checkAuth} // Pass checkAuth as onLoginSuccess
-        showSnackbar={showSnackbar} // Pass the showSnackbar function
-        setAuthToken={setAuthToken} // Pass setAuthToken directly
-      />
+      <LoginModal open={isLoginModalOpen} onClose={handleCloseLoginModal} showSnackbar={showSnackbar} />
+      <RegisterModal open={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} />
       <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleCloseSnackbar}>
         <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
           {snackbarMessage}
