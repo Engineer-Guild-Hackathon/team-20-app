@@ -43,14 +43,14 @@ interface GraphData {
 const SummaryTreeGraph: React.FC = () => {
   const { authToken } = useAuth();
   const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [isSummarized, setIsSummarized] = useState<boolean>(true); // NEW: 要約表示/元の回答表示を切り替えるstate
   const cyRef = useRef<cytoscape.Core | null>(null); // Cytoscape.js インスタンスを保存 (useRefを使用)
   const [expandedGroupNodes, setExpandedGroupNodes] = useState<{ [key: string]: boolean }>({}); // NEW: 展開状態を管理
   const [teams, setTeams] = useState<any[]>([]); // NEW: ユーザーが所属するチームのリスト
-  const [selectedFilter, setSelectedFilter] = useState<{ type: 'personal' | 'team' | 'all', teamId?: number }>({ type: 'all' }); // NEW: 選択されたフィルター
+  const [selectedFilter, setSelectedFilter] = useState<{ type: 'personal' | 'team' | 'none', teamId?: number }>({ type: 'none' }); // NEW: 選択されたフィルター
 
   useEffect(() => {
     return () => {
@@ -83,6 +83,11 @@ const SummaryTreeGraph: React.FC = () => {
   }, [authToken, fetchTeams]);
 
   const fetchGraphData = useCallback(async () => {
+    if (selectedFilter.type === 'none') {
+      setGraphData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -119,10 +124,10 @@ const SummaryTreeGraph: React.FC = () => {
   }, [authToken, selectedFilter]);
 
   useEffect(() => {
-    if (authToken) {
+    if (authToken && selectedFilter.type !== 'none') {
       fetchGraphData();
     }
-  }, [authToken, fetchGraphData]);
+  }, [authToken, fetchGraphData, selectedFilter.type]);
 
   const [processedElements, setProcessedElements] = useState<any[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -709,7 +714,7 @@ const SummaryTreeGraph: React.FC = () => {
                 value={selectedFilter.type}
                 label="表示フィルター"
                 onChange={(e) => {
-                  const newFilterType = e.target.value as 'personal' | 'team' | 'all';
+                  const newFilterType = e.target.value as 'personal' | 'team' | 'none';
                   if (newFilterType === 'team' && teams.length > 0) {
                     setSelectedFilter({ type: newFilterType, teamId: teams[0].id });
                   } else {
@@ -717,7 +722,7 @@ const SummaryTreeGraph: React.FC = () => {
                   }
                 }}
               >
-                <MenuItem value="all">全て</MenuItem>
+                <MenuItem value="none" disabled>選択してください</MenuItem>
                 <MenuItem value="personal">個人</MenuItem>
                 <MenuItem value="team">チーム</MenuItem>
               </Select>
