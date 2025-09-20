@@ -2166,27 +2166,11 @@ async def get_summary_tree_graph(
         if node.type != "user_question":
             final_nodes.append(node)
     
-    # 元のリンクリストを再構築
-    # まず、カテゴリノードから統合された質問ノードへのリンクを生成
-    for category_name, qa_pairs in questions_by_category.items():
-        category_node_id = f"category_{summary.id}_{category_name}"
-        # このカテゴリに属する質問ノードが統合された場合、統合ノードへのリンクを作成
-        for qa_pair in qa_pairs:
-            question_node_id = f"question_{summary.id}_{category_name}_{qa_pairs.index(qa_pair)}"
-            if question_node_id in integrated_node_replacements:
-                integrated_node_id = integrated_node_replacements[question_node_id]
-                # 重複を避けてリンクを追加
-                if not any(fl.source == category_node_id and fl.target == integrated_node_id and fl.type == "category_question_link" for fl in final_links):
-                    final_links.append(GraphLink(source=category_node_id, target=integrated_node_id, type="category_question_link"))
-            else:
-                # 統合されなかった質問ノードへのリンクはそのまま追加
-                final_links.append(GraphLink(source=category_node_id, target=question_node_id, type="category_question_link"))
+
 
     # その他のリンクを処理
     for link in links:
-        # category_question_link は既に処理済みなのでスキップ
-        if link.type == "category_question_link":
-            continue
+
 
         source_id = link.source
         target_id = link.target

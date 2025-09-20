@@ -219,7 +219,7 @@ const SummaryTreeGraph: React.FC = () => {
     });
 
     // Now, construct elementsWithDepth using the calculated depths
-    graphData.nodes.forEach(node => {
+    graphData.nodes.filter(node => node.type !== 'summary').forEach(node => {
       let depth = nodeToDepthMap.get(node.id);
 
       if (node.type === 'category') {
@@ -744,7 +744,7 @@ const SummaryTreeGraph: React.FC = () => {
           </Box>
 
           {/* NEW: Legend */}
-          <Paper elevation={3} sx={{ position: 'absolute', bottom: 16, left: 16, zIndex: 10, p: 1, borderRadius: '4px', backgroundColor: 'rgba(255, 255, 255, 0.8)' }}>
+          <Paper elevation={3} sx={{ position: 'absolute', bottom: 16, left: 16, zIndex: 10, p: 1, borderRadius: '4px' }}>
             <Typography variant="subtitle2" gutterBottom>凡例</Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
               <Box sx={{ width: 12, height: 12, backgroundColor: '#f44336', borderRadius: '2px', mr: 1 }} />
