@@ -44,7 +44,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ open, onClose, showSnackbar }) 
         showSnackbar('ログインに成功しました！', 'success'); // Call showSnackbar
         setErrorMessage(''); // Clear any previous error
         onClose(); // ログイン成功時にモーダルを閉じる
-        window.location.reload(); // ページを再読み込み
+        //window.location.reload(); // ページを再読み込み
       } else {
         const errorData = await response.json();
         console.error('ログイン失敗:', errorData.detail);
