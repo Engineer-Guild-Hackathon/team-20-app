@@ -224,6 +224,15 @@ const SummaryTreeGraph: React.FC = () => {
     });
 
     // Now, construct elementsWithDepth using the calculated depths
+    // Add summary nodes to elementsWithDepth
+    graphData.nodes.filter(node => node.type === 'summary').forEach(node => {
+      const depth = nodeToDepthMap.get(node.id) || 0; // Default to 0 if depth not calculated
+      elementsWithDepth.push({
+        data: { ...node, depth: depth, label: node.label },
+        classes: node.type,
+      });
+    });
+
     graphData.nodes.filter(node => node.type !== 'summary').forEach(node => {
       let depth = nodeToDepthMap.get(node.id);
 
