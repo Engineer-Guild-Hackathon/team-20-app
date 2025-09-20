@@ -693,14 +693,6 @@ const SummaryTreeGraph: React.FC = () => {
     );
   }
 
-  if (!graphData || graphData.nodes.length === 0) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">表示するグラフデータがありません。</Typography>
-      </Box>
-    );
-  }
-
   return (
     <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', p: 2, flexWrap: 'nowrap' }}>
       <Box sx={{ display: 'flex', flexDirection: 'row', flexGrow: 1, pr: 2 }}>
@@ -768,6 +760,11 @@ const SummaryTreeGraph: React.FC = () => {
               <Typography variant="body2">統合された質問</Typography>
             </Box>
           </Paper>
+          {processedElements.length === 0 && !loading && !error && selectedFilter.type !== 'none' && (
+            <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 5 }}>
+              <Typography variant="h6">表示するグラフデータがありません。</Typography>
+            </Box>
+          )}
           <CytoscapeComponent
           key={`graph-component-${selectedFilter.type}-${selectedFilter.teamId || ''}`}
 
