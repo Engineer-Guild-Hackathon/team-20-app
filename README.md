@@ -12,6 +12,18 @@
 
 ---
 
+## 開発手法
+- スクラム開発
+- 共有に使用したmiro: https://miro.com/welcomeonboard/RXB0VVN5K3pGejlocUNxRFFJd1MyQVdka0FmQnYyYTIwWER5UGlCZldOajJGVkhkNEl1QTRkU0ZxSHk0bzJ1b1lDZ3M4LzJXYllydUE0blVlMDQzcDdHTjlVeDhDMEgzdHg3Mm1aL2tCcjlaeG1FTEpTSzZtMlVCOUYralp1UG5QdGo1ZEV3bUdPQWRZUHQzSGl6V2NBPT0hdjE=?share_link_id=263162362613
+
+## 役割
+- スクラムマスター: 共田
+- プロダクトオーナー: 共田、中島
+- プレゼンテーション: 大松、山口、赤松
+- テックリード: 平山
+- エンジニア: 共田、福留、中島
+
+
 ## デモ　/ プレゼン資料
 - デモURL: https://team-20-app-client-tau.vercel.app/
 - プレゼンURL：https://docs.google.com/presentation/d/1jvpwPno4Xsct4s_-x2TKKr6VRkYCWcj-/edit?usp=sharing&ouid=116940754129608060449&rtpof=true&sd=true
