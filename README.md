@@ -9,12 +9,17 @@
 - チーム名: IPUT_OK
 - プロダクト名: Reproduce Hub
 - メンバー: 福留陽希、平山結也、中島主税、大松隼翔、山口ちひろ、赤松志優、共田仁俊
+- SM: 共田仁俊
+- PO: 共田仁俊
+- リードプログラマー: 平山結也 
+- プログラマー: 共田仁俊、福留陽希、中島主税
+- 資料作成: 福留陽希、中島主税、大松隼翔、山口ちひろ、赤松志優、共田仁俊
 
 ---
 
 ## 開発手法
 - スクラム開発
-- 共有に使用したmiro: https://miro.com/welcomeonboard/RXB0VVN5K3pGejlocUNxRFFJd1MyQVdka0FmQnYyYTIwWER5UGlCZldOajJGVkhkNEl1QTRkU0ZxSHk0bzJ1b1lDZ3M4LzJXYllydUE0blVlMDQzcDdHTjlVeDhDMEgzdHg3Mm1aL2tCcjlaeG1FTEpTSzZtMlVCOUYralp1UG5QdGo1ZEV3bUdPQWRZUHQzSGl6V2NBPT0hdjE=?share_link_id=263162362613
+- 共有に使用したmiro: https://miro.com/welcomeonboard/RXB0VVN5K3pGejlocUNxRFFJd1MyQVdka0FmQnYyYTIwWER5UGlCZldOajJGVkhkNEl1QTRkU0ZxSHk0bzJ1b1lDZ3M4LzJXYllydUE0blVlMDQzcDdHTjlVeDhDMEgzdHg3Mm1aL2tCci9uUDlvcEx3cmhjSXFiQWtjdUFFSHJNakdSWkpBejJWRjJhRnhhb1UwcS9BPT0hdjE=?share_link_id=712484811959
 
 ## 役割
 - スクラムマスター: 共田
